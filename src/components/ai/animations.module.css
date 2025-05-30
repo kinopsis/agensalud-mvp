@@ -1,0 +1,82 @@
+/* AI Component Animations - CSS Module */
+
+.typingIndicator {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.typingDot {
+  width: 0.5rem;
+  height: 0.5rem;
+  background-color: rgb(156, 163, 175); /* gray-400 */
+  border-radius: 50%;
+  animation: bounce 1s infinite;
+}
+
+.typingDot:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.typingDot:nth-child(2) {
+  animation-delay: 0.1s;
+}
+
+.typingDot:nth-child(3) {
+  animation-delay: 0.2s;
+}
+
+/* Smooth fade-in animation for messages */
+.messageAppear {
+  animation: fadeInUp 0.3s ease-out;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Modal animations */
+.modalOverlay {
+  animation: fadeIn 0.2s ease-out;
+}
+
+.modalContent {
+  animation: slideInUp 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Button hover animations */
+.buttonHover {
+  transition: all 0.2s ease-in-out;
+}
+
+.buttonHover:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
