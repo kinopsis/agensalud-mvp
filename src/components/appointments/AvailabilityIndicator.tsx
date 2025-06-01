@@ -18,6 +18,7 @@
 
 import React from 'react';
 import { Clock, AlertCircle, CheckCircle, XCircle } from 'lucide-react';
+import { ImmutableDateSystem } from '@/lib/core/ImmutableDateSystem';
 
 /**
  * Tipos de disponibilidad
@@ -154,46 +155,60 @@ const AvailabilityIndicator: React.FC<AvailabilityIndicatorProps> = ({
   const IconComponent = config.icon;
 
   const formatDate = (dateString: string): string => {
-    const date = new Date(dateString);
-    return date.getDate().toString();
+    // CRITICAL FIX: Use ImmutableDateSystem to avoid timezone displacement
+    try {
+      const components = ImmutableDateSystem.parseDate(dateString);
+      const dayNumber = components.day.toString();
+
+      // CRITICAL: Enhanced debugging for visual-to-data correlation
+      console.log(`🔍 VISUAL DISPLAY: formatDate(${dateString}) → visual day: ${dayNumber}`);
+
+      return dayNumber;
+    } catch (error) {
+      console.error('Error formatting date:', dateString, error);
+      // Fallback to safe parsing
+      const [year, month, day] = dateString.split('-').map(Number);
+      console.log(`🔍 VISUAL DISPLAY: formatDate(${dateString}) → fallback day: ${day}`);
+      return day.toString();
+    }
   };
 
   const formatFullDate = (dateString: string): string => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('es-ES', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    });
+    // CRITICAL FIX: Use ImmutableDateSystem to avoid timezone displacement
+    return ImmutableDateSystem.formatForDisplay(dateString, 'es-ES');
   };
 
   const handleClick = () => {
+    // CRITICAL: Enhanced debugging for visual-to-backend correlation
+    const visualDay = formatDate(date);
+    console.log('🔍 AVAILABILITY INDICATOR: Click initiated');
+    console.log(`📅 VISUAL-TO-DATA: Visual day "${visualDay}" corresponds to date "${date}"`);
+    console.log(`🔍 CLICK CORRELATION: User sees day ${visualDay}, system will process ${date}`);
+
     // CRITICAL FEATURE: Block click if date is blocked
     if (isBlocked) {
       console.log('🚫 CLICK BLOQUEADO - Fecha no disponible:', blockReason);
       return;
     }
 
-    // Validar que no sea fecha pasada
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const dateObj = new Date(date);
-    dateObj.setHours(0, 0, 0, 0);
-
-    const isPastDate = dateObj.getTime() < today.getTime();
+    // Validar que no sea fecha pasada usando ImmutableDateSystem
+    const isPastDate = ImmutableDateSystem.isPastDate(date);
 
     if (onClick && level !== 'none' && level !== 'blocked' && !isPastDate) {
+      console.log(`✅ AVAILABILITY INDICATOR: Calling onClick for ${date} (visual day ${visualDay})`);
       onClick();
+    } else {
+      console.log(`🚫 AVAILABILITY INDICATOR: Click blocked for ${date} (visual day ${visualDay})`, {
+        hasOnClick: !!onClick,
+        level,
+        isBlocked,
+        isPastDate
+      });
     }
   };
 
-  // Verificar si es fecha pasada
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const dateObj = new Date(date);
-  dateObj.setHours(0, 0, 0, 0);
-  const isPastDate = dateObj.getTime() < today.getTime();
+  // Verificar si es fecha pasada usando ImmutableDateSystem
+  const isPastDate = ImmutableDateSystem.isPastDate(date);
 
   // CRITICAL FEATURE: Include blocked state in clickable logic
   const isClickable = onClick && level !== 'none' && level !== 'blocked' && !isPastDate && !isBlocked;
@@ -305,67 +320,257 @@ export const WeeklyAvailability: React.FC<WeeklyAvailabilityProps> = ({
   size = 'md'
 }) => {
   /**
-   * CRITICAL FIX: Ensure timezone-safe date passing
-   * The day.date should already be timezone-safe from WeeklyAvailabilitySelector,
-   * but we add validation to ensure consistency
+   * CRITICAL ENHANCEMENT: Advanced date click tracking with displacement detection
+   * Comprehensive logging and correlation checking for validation system
    */
   const handleDateClick = (dateString: string) => {
-    // DEBUG: Log para verificar fecha antes de enviar
-    console.log('=== DEBUG WEEKLY AVAILABILITY CLICK ===');
-    console.log('day.date recibido:', dateString);
+    // CRITICAL: Enhanced date click tracking for validation system
+    const clickTimestamp = new Date().toISOString();
+    const clickId = `click-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-    // Verificar que la fecha esté en formato correcto YYYY-MM-DD
+    console.log('=== ENHANCED WEEKLY AVAILABILITY CLICK TRACKING ===');
+    console.log('🔍 Date clicked:', dateString);
+    console.log('🆔 Click ID:', clickId);
+    console.log('⏰ Timestamp:', clickTimestamp);
+
+    // Track the exact clicked date for validation correlation
+    if (window.trackDateEvent) {
+      window.trackDateEvent('DATE_CLICK_INITIATED', {
+        clickedDate: dateString,
+        clickTimestamp,
+        clickId,
+        component: 'WeeklyAvailability',
+        source: 'handleDateClick'
+      }, 'WeeklyAvailability');
+    }
+
+    // CRITICAL: Store clicked date for correlation tracking
+    if (typeof window !== 'undefined') {
+      window.lastClickedDate = {
+        date: dateString,
+        timestamp: clickTimestamp,
+        clickId,
+        component: 'WeeklyAvailability'
+      };
+      console.log('💾 Stored clicked date for correlation:', window.lastClickedDate);
+    }
+
+    // SIMPLIFIED: Basic format validation only
     const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
     if (!dateRegex.test(dateString)) {
-      console.error('FORMATO DE FECHA INCORRECTO:', dateString);
+      console.error('❌ FORMATO DE FECHA INCORRECTO:', dateString);
+
+      if (window.trackDateEvent) {
+        window.trackDateEvent('DATE_CLICK_VALIDATION_FAILED', {
+          clickedDate: dateString,
+          clickId,
+          error: 'Invalid date format'
+        }, 'WeeklyAvailability');
+      }
       return;
     }
 
-    // CRITICAL FIX: Verificar consistencia timezone usando parsing seguro
-    // Problem: new Date("2025-05-29") creates May 28 in GMT-0500
-    // Solution: Parse date components manually to avoid UTC interpretation
-    const [year, month, day] = dateString.split('-').map(Number);
-    const dateObjSafe = new Date(year, month - 1, day); // month is 0-indexed
-    const localDateString = `${dateObjSafe.getFullYear()}-${String(dateObjSafe.getMonth() + 1).padStart(2, '0')}-${String(dateObjSafe.getDate()).padStart(2, '0')}`;
+    // DISRUPTIVE: Validate date using ImmutableDateSystem
+    const validation = ImmutableDateSystem.validateAndNormalize(dateString, 'WeeklyAvailability');
 
-    // Also create UTC version for comparison
-    const dateObjUTC = new Date(dateString); // This creates the problematic UTC interpretation
-    const utcLocalString = `${dateObjUTC.getFullYear()}-${String(dateObjUTC.getMonth() + 1).padStart(2, '0')}-${String(dateObjUTC.getDate()).padStart(2, '0')}`;
+    if (!validation.isValid) {
+      console.error('❌ WEEKLY AVAILABILITY: Date validation failed:', validation.error);
 
-    console.log('Verificación timezone (CORREGIDA):');
-    console.log('  - dateString original:', dateString);
-    console.log('  - localDateString (timezone-safe):', localDateString);
-    console.log('  - utcLocalString (problematic):', utcLocalString);
-    console.log('  - ¿Son iguales? (safe):', dateString === localDateString);
-    console.log('  - ¿Son iguales? (UTC):', dateString === utcLocalString);
-
-    // CRITICAL FIX: Use timezone-safe comparison for decision
-    if (dateString !== localDateString) {
-      console.warn('DESFASE TIMEZONE DETECTADO - usando fecha local corregida');
-      console.log('Enviando fecha corregida:', localDateString);
-      onDateSelect?.(localDateString);
-    } else {
-      console.log('Fecha consistente (timezone-safe) - enviando original:', dateString);
-      onDateSelect?.(dateString);
+      if (window.trackDateEvent) {
+        window.trackDateEvent('DATE_CLICK_IMMUTABLE_VALIDATION_FAILED', {
+          clickedDate: dateString,
+          clickId,
+          error: validation.error
+        }, 'WeeklyAvailability');
+      }
+      return;
     }
+
+    if (validation.displacement?.detected) {
+      console.error('🚨 WEEKLY AVAILABILITY: DATE DISPLACEMENT DETECTED ON CLICK!', {
+        clickedDate: dateString,
+        normalizedDate: validation.normalizedDate,
+        displacement: validation.displacement
+      });
+
+      if (window.trackDateEvent) {
+        window.trackDateEvent('DATE_CLICK_DISPLACEMENT_DETECTED', {
+          clickedDate: dateString,
+          normalizedDate: validation.normalizedDate,
+          displacement: validation.displacement,
+          clickId
+        }, 'WeeklyAvailability');
+      }
+    }
+
+    console.log('✅ Passing date directly to parent (no timezone manipulation):', dateString);
+    console.log('✅ Complex timezone logic removed to prevent displacement');
+
+    // Track the callback invocation
+    if (window.trackDateEvent) {
+      window.trackDateEvent('DATE_CLICK_CALLBACK_INVOKED', {
+        clickedDate: dateString,
+        clickId,
+        callbackTarget: 'onDateSelect'
+      }, 'WeeklyAvailability');
+    }
+
+    // SIMPLIFIED: Direct date passing without any manipulation
+    onDateSelect?.(dateString);
+
+    console.log('🎯 Date click processing completed');
     console.log('=========================================');
+
+    // Schedule correlation check after a short delay to allow time slot updates
+    setTimeout(() => {
+      checkDateCorrelation(dateString, clickId);
+    }, 500);
   };
+
+  /**
+   * CRITICAL: Check correlation between clicked date and displayed time slot header
+   */
+  const checkDateCorrelation = (clickedDate: string, clickId: string) => {
+    console.log('🔍 CORRELATION CHECK: Verifying clicked date vs displayed date');
+    console.log('📊 Clicked date:', clickedDate);
+    console.log('🆔 Click ID:', clickId);
+
+    // Find time slot headers in the DOM
+    const timeSlotHeaders = document.querySelectorAll('*');
+    let foundHeaders: { element: Element; text: string; extractedDate: string | null }[] = [];
+
+    timeSlotHeaders.forEach(element => {
+      const text = element.textContent || '';
+      if (text.includes('Horarios disponibles para')) {
+        const dateMatch = text.match(/(\d{4}-\d{2}-\d{2})/);
+        foundHeaders.push({
+          element,
+          text,
+          extractedDate: dateMatch ? dateMatch[1] : null
+        });
+      }
+    });
+
+    console.log('📋 CORRELATION CHECK: Found time slot headers:', foundHeaders.length);
+    foundHeaders.forEach((header, index) => {
+      console.log(`  ${index + 1}. "${header.text}" → Date: ${header.extractedDate}`);
+    });
+
+    foundHeaders.forEach((header, index) => {
+      const isCorrect = header.extractedDate === clickedDate;
+      const isDisplacement = header.extractedDate && header.extractedDate !== clickedDate;
+
+      if (window.trackDateEvent) {
+        window.trackDateEvent('DATE_CORRELATION_CHECK', {
+          clickedDate,
+          displayedDate: header.extractedDate,
+          headerText: header.text,
+          isCorrect,
+          isDisplacement,
+          clickId,
+          headerIndex: index
+        }, 'WeeklyAvailability');
+      }
+
+      if (isDisplacement) {
+        console.error('🚨 DATE DISPLACEMENT CONFIRMED!', {
+          clickedDate,
+          displayedDate: header.extractedDate,
+          headerText: header.text,
+          displacement: {
+            detected: true,
+            daysDifference: calculateDaysDifference(clickedDate, header.extractedDate)
+          }
+        });
+
+        // Track critical displacement event
+        if (window.trackDateEvent) {
+          window.trackDateEvent('CRITICAL_DATE_DISPLACEMENT_CONFIRMED', {
+            clickedDate,
+            displayedDate: header.extractedDate,
+            headerText: header.text,
+            clickId,
+            severity: 'CRITICAL'
+          }, 'WeeklyAvailability');
+        }
+
+        // Alert user about displacement
+        if (window.advancedDateTracker?.config?.alertOnDisplacement) {
+          alert(`🚨 DATE DISPLACEMENT DETECTED!\n\nClicked: ${clickedDate}\nShowing: ${header.extractedDate}\n\nThis is the bug we're trying to fix!`);
+        }
+      } else if (isCorrect) {
+        console.log('✅ DATE CORRELATION CORRECT:', {
+          clickedDate,
+          displayedDate: header.extractedDate
+        });
+
+        if (window.trackDateEvent) {
+          window.trackDateEvent('DATE_CORRELATION_CORRECT', {
+            clickedDate,
+            displayedDate: header.extractedDate,
+            clickId
+          }, 'WeeklyAvailability');
+        }
+      }
+    });
+
+    // If no headers found, track that too
+    if (foundHeaders.length === 0) {
+      console.log('⚠️ No time slot headers found for correlation check');
+
+      if (window.trackDateEvent) {
+        window.trackDateEvent('NO_TIME_SLOT_HEADERS_FOUND', {
+          clickedDate,
+          clickId,
+          searchPerformed: true
+        }, 'WeeklyAvailability');
+      }
+    }
+  };
+
+  /**
+   * Calculate difference in days between two dates
+   */
+  const calculateDaysDifference = (date1: string, date2: string): number => {
+    try {
+      const d1 = new Date(date1);
+      const d2 = new Date(date2);
+      const diffTime = Math.abs(d2.getTime() - d1.getTime());
+      return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    } catch (error) {
+      return 0;
+    }
+  };
+
+  // CRITICAL: Enhanced logging for date transformation pipeline
+  console.log('🔍 WEEKLY AVAILABILITY: Rendering week data:', weekData.map(day => ({
+    date: day.date,
+    dayName: day.dayName,
+    isSelected: selectedDate === day.date
+  })));
 
   return (
     <div className="flex justify-center space-x-2">
-      {weekData.map((day) => (
-        <AvailabilityIndicator
-          key={day.date}
-          date={day.date}
-          dayName={day.dayName}
-          slotsCount={day.slotsCount}
-          isSelected={selectedDate === day.date}
-          onClick={() => handleDateClick(day.date)}
-          size={size}
-          isBlocked={day.isBlocked}
-          blockReason={day.blockReason}
-        />
-      ))}
+      {weekData.map((day) => {
+        console.log(`🔍 WEEKLY AVAILABILITY: Rendering day ${day.date} (${day.dayName}) - selected: ${selectedDate === day.date}`);
+
+        return (
+          <AvailabilityIndicator
+            key={day.date}
+            date={day.date}
+            dayName={day.dayName}
+            slotsCount={day.slotsCount}
+            isSelected={selectedDate === day.date}
+            onClick={() => {
+              console.log(`🔍 WEEKLY AVAILABILITY: Click initiated for ${day.date} (${day.dayName})`);
+              handleDateClick(day.date);
+            }}
+            size={size}
+            isBlocked={day.isBlocked}
+            blockReason={day.blockReason}
+          />
+        );
+      })}
     </div>
   );
 };
@@ -374,24 +579,36 @@ export const WeeklyAvailability: React.FC<WeeklyAvailabilityProps> = ({
  * Hook para generar datos de ejemplo de disponibilidad semanal
  */
 export const useWeeklyAvailabilityData = (startDate: Date) => {
+  // DISRUPTIVE: Use ImmutableDateSystem for displacement-safe date operations
+
   const weekData = [];
   const dayNames = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
-  
+
+  // DISRUPTIVE: Use ImmutableDateSystem for displacement-safe week generation
+  const startDateStr = startDate.toISOString().split('T')[0];
+  const weekDates = ImmutableDateSystem.generateWeekDates(startDateStr);
+  console.log('🔧 AvailabilityIndicator: Using ImmutableDateSystem.generateWeekDates for weekly data');
+
   for (let i = 0; i < 7; i++) {
-    const date = new Date(startDate);
-    date.setDate(startDate.getDate() + i);
-    
+    const dateStr = weekDates[i];
+
+    // DISPLACEMENT-SAFE: Parse date components safely
+    const [year, month, day] = dateStr.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
+
     // Simular disponibilidad variable
     const isWeekend = date.getDay() === 0 || date.getDay() === 6;
     const slotsCount = isWeekend ? Math.floor(Math.random() * 3) : Math.floor(Math.random() * 10);
-    
+
     weekData.push({
-      date: date.toISOString().split('T')[0],
+      date: dateStr, // Use the displacement-safe date string directly
       dayName: dayNames[date.getDay()],
       slotsCount
     });
+
+    console.log(`📅 AvailabilityIndicator.weekData[${i}]: ${dateStr} (${dayNames[date.getDay()]})`);
   }
-  
+
   return weekData;
 };
 

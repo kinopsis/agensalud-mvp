@@ -26,6 +26,9 @@ import SmartSuggestionsDisplay from '@/components/ai/SmartSuggestionsDisplay';
 import { SmartSuggestionsEngine, type SmartSuggestion, type SuggestionsResult } from '@/lib/ai/SmartSuggestionsEngine';
 import { validateMultipleDates, type DateValidationResult } from '@/lib/utils/dateValidation';
 
+import { ImmutableDateSystem } from '@/lib/core/ImmutableDateSystem';
+import { DataIntegrityValidator } from '@/lib/core/DataIntegrityValidator';
+
 /**
  * Tipos de disponibilidad para indicadores visuales
  */
@@ -42,6 +45,16 @@ interface DayAvailabilityData {
   isToday?: boolean;
   isTomorrow?: boolean;
   isWeekend?: boolean;
+  slots?: Array<{
+    id: string;
+    time: string;
+    doctorId: string;
+    doctorName: string;
+    available: boolean;
+    specialization?: string;
+    consultationFee?: number;
+    price?: number;
+  }>;
 }
 
 /**
@@ -104,10 +117,15 @@ interface WeeklyAvailabilitySelectorProps {
   loading?: boolean;
   /** Clase CSS adicional */
   className?: string;
+  /** Rol del usuario para validación basada en roles (MVP) */
+  userRole?: 'patient' | 'admin' | 'staff' | 'doctor' | 'superadmin';
+  /** Forzar reglas estándar incluso para usuarios privilegiados */
+  useStandardRules?: boolean;
 }
 
 /**
- * Hook para generar datos de disponibilidad semanal
+ * ENHANCED Hook using Unified Architecture - DISRUPTIVE SOLUTION
+ * Uses the new centralized data management system to eliminate inconsistencies
  */
 const useWeeklyAvailabilityData = (
   startDate: Date,
@@ -115,283 +133,211 @@ const useWeeklyAvailabilityData = (
   serviceId?: string,
   doctorId?: string,
   locationId?: string,
-  onLoadAvailability?: WeeklyAvailabilitySelectorProps['onLoadAvailability']
+  onLoadAvailability?: WeeklyAvailabilitySelectorProps['onLoadAvailability'],
+  userRole?: 'patient' | 'admin' | 'staff' | 'doctor' | 'superadmin',
+  useStandardRules?: boolean
 ) => {
+  // DISRUPTIVE CHANGE: Use ImmutableDateSystem for all date operations
+  const startDateStr = useMemo(() => {
+    const inputDateStr = startDate.toISOString().split('T')[0];
+    console.log('🔍 WEEKLY DATA: useWeeklyAvailabilityData called with startDate:', startDate);
+    console.log('🔍 WEEKLY DATA: Converted to string:', inputDateStr);
+
+    const validation = ImmutableDateSystem.validateAndNormalize(
+      inputDateStr,
+      'WeeklyAvailabilitySelector'
+    );
+
+    if (!validation.isValid) {
+      console.error('🚨 Invalid start date in WeeklyAvailabilitySelector:', validation.error);
+      return ImmutableDateSystem.getTodayString();
+    }
+
+    console.log('🔍 WEEKLY DATA: Validated start date:', validation.normalizedDate);
+
+    // CRITICAL FIX: Always use the actual start of the week for calendar grid consistency
+    const actualStartOfWeek = ImmutableDateSystem.getStartOfWeek(validation.normalizedDate!);
+    console.log('🔍 WEEKLY DATA: Actual start of week for calendar grid:', actualStartOfWeek);
+    console.log('🚨 WEEKLY DATA: CONSISTENCY FIX:', {
+      inputDate: validation.normalizedDate,
+      startOfWeek: actualStartOfWeek,
+      wasFixed: validation.normalizedDate !== actualStartOfWeek
+    });
+
+    // FIXED: Return the actual start of week to ensure calendar grid consistency
+    return actualStartOfWeek;
+  }, [startDate]);
+
+  const endDateStr = useMemo(() => {
+    return ImmutableDateSystem.addDays(startDateStr, 6);
+  }, [startDateStr]);
+
+  // DISRUPTIVE CHANGE: Use unified data service through context
+  const query = useMemo(() => ({
+    organizationId,
+    startDate: startDateStr,
+    endDate: endDateStr,
+    serviceId,
+    doctorId,
+    locationId,
+    userRole: userRole || 'patient',
+    useStandardRules: useStandardRules || false
+  }), [organizationId, startDateStr, endDateStr, serviceId, doctorId, locationId, userRole, useStandardRules]);
+
+  // FIXED: Direct API implementation using the same approach as daily calendar
   const [weekData, setWeekData] = useState<DayAvailabilityData[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const loadWeekData = useCallback(async () => {
-    if (!onLoadAvailability) {
-      // Generar datos de ejemplo si no hay función de carga
-      const mockData: DayAvailabilityData[] = [];
-      const dayNames = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
-      
-      // DEBUG: Log inicial para investigar problema de fechas
-      console.log('=== DEBUG FECHA GENERACIÓN ===');
-      console.log('startDate original:', startDate);
-      console.log('startDate ISO:', startDate.toISOString());
-      console.log('startDate timezone offset:', startDate.getTimezoneOffset());
+  // Helper function to determine availability level
+  const getAvailabilityLevel = (slotsCount: number): 'none' | 'low' | 'medium' | 'high' => {
+    if (slotsCount === 0) return 'none';
+    if (slotsCount <= 2) return 'low';
+    if (slotsCount <= 5) return 'medium';
+    return 'high';
+  };
 
-      for (let i = 0; i < 7; i++) {
-        // CRITICAL FIX: Use timezone-safe date calculation
-        // Instead of setDate() which can cause timezone issues, use direct date arithmetic
-        const date = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate() + i);
-
-        // DEBUG: Log antes de cálculo
-        console.log(`Día ${i} (antes cálculo):`, {
-          startDateYear: startDate.getFullYear(),
-          startDateMonth: startDate.getMonth(),
-          startDateDate: startDate.getDate(),
-          indexI: i,
-          calculation: startDate.getDate() + i
-        });
-
-        // DEBUG: Log después de cálculo timezone-safe
-        console.log(`Día ${i} (después cálculo timezone-safe):`, {
-          newDate: date.toISOString(),
-          getDate: date.getDate(),
-          getDay: date.getDay(),
-          dayName: dayNames[date.getDay()],
-          localDateString: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
-        });
-
-        const today = new Date();
-        today.setHours(0, 0, 0, 0); // Normalizar a medianoche para comparación
-        date.setHours(0, 0, 0, 0); // Normalizar a medianoche para comparación
-
-        const isToday = date.getTime() === today.getTime();
-        const isPastDate = date.getTime() < today.getTime();
-        const tomorrow = new Date(today);
-        tomorrow.setDate(today.getDate() + 1);
-        const isTomorrow = date.getTime() === tomorrow.getTime();
-
-        const isWeekend = date.getDay() === 0 || date.getDay() === 6;
-
-        // CRITICAL FIX: Use timezone-safe date formatting (moved up to be available for logging)
-        const finalDateString = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-
-        // CRITICAL FIX: Apply 4-hour rule validation during weekData generation
-        // This ensures that dates that don't meet the 4-hour rule are marked as 'none' from the start
-        let slotsCount = 0;
-        let availabilityLevel: AvailabilityLevel = 'none';
-
-        if (isPastDate) {
-          availabilityLevel = 'none'; // Fechas pasadas siempre sin disponibilidad
-          slotsCount = 0;
-        } else {
-          // Generate initial slots count
-          const initialSlotsCount = isWeekend ? Math.floor(Math.random() * 3) : Math.floor(Math.random() * 10);
-
-          // CRITICAL FIX: Apply 4-hour advance booking rule validation
-          // Check if this date would have any valid slots after applying the 4-hour rule
-          const MINIMUM_ADVANCE_HOURS = 4;
-          const MINIMUM_ADVANCE_MINUTES = MINIMUM_ADVANCE_HOURS * 60;
-          const now = new Date();
-
-          // Generate typical business hours for this date
-          const businessHours = ['08:00', '09:00', '10:00', '11:00', '14:00', '15:00', '16:00', '17:00', '18:00'];
-
-          // Count how many slots would be valid after 4-hour rule
-          let validSlotsCount = 0;
-          if (initialSlotsCount > 0) {
-            businessHours.forEach(timeSlot => {
-              const [hours, minutes] = timeSlot.split(':').map(Number);
-              const slotDateTime = new Date(date.getFullYear(), date.getMonth(), date.getDate(), hours, minutes);
-
-              const timeDifferenceMs = slotDateTime.getTime() - now.getTime();
-              const timeDifferenceMinutes = Math.floor(timeDifferenceMs / (1000 * 60));
-
-              if (timeDifferenceMinutes >= MINIMUM_ADVANCE_MINUTES) {
-                validSlotsCount++;
-              }
-            });
-
-            // Only count slots that would actually be available after 4-hour rule
-            slotsCount = Math.min(initialSlotsCount, validSlotsCount);
-          }
-
-          // Set availability level based on valid slots count
-          if (slotsCount === 0) {
-            availabilityLevel = 'none';
-          } else if (slotsCount <= 2) {
-            availabilityLevel = 'low';
-          } else if (slotsCount <= 5) {
-            availabilityLevel = 'medium';
-          } else {
-            availabilityLevel = 'high';
-          }
-
-          console.log(`🔍 VALIDACIÓN 4H INTEGRADA - ${finalDateString}:`, {
-            initialSlotsCount,
-            validSlotsCount,
-            finalSlotsCount: slotsCount,
-            availabilityLevel,
-            isWeekend,
-            timeDifferenceToFirstSlot: businessHours.length > 0 ? Math.floor((new Date(date.getFullYear(), date.getMonth(), date.getDate(), 8, 0).getTime() - now.getTime()) / (1000 * 60)) : 'N/A'
-          });
-        }
-
-        // DEBUG: Log datos finales con comparación
-        console.log(`Día ${i} (datos finales):`, {
-          date: finalDateString,
-          dateISO: date.toISOString().split('T')[0],
-          dateLocal: finalDateString,
-          dayName: dayNames[date.getDay()],
-          slotsCount,
-          availabilityLevel,
-          isToday,
-          isTomorrow,
-          isWeekend,
-          timezoneComparison: {
-            iso: date.toISOString().split('T')[0],
-            local: finalDateString,
-            match: date.toISOString().split('T')[0] === finalDateString
-          }
-        });
-
-        mockData.push({
-          date: finalDateString, // Use timezone-safe formatting
-          dayName: dayNames[date.getDay()],
-          slotsCount,
-          availabilityLevel,
-          isToday,
-          isTomorrow,
-          isWeekend
-        });
-      }
-
-      console.log('=== DEBUG MOCK DATA FINAL ===');
-      console.log('mockData completo:', mockData);
-      console.log('================================');
-      
-      setWeekData(mockData);
-      return;
-    }
+  // FIXED: Direct API call using the working /api/doctors/availability endpoint
+  const fetchWeeklyAvailability = useCallback(async () => {
+    console.log('🔄 WEEKLY CALENDAR: Fetching availability data:', {
+      organizationId,
+      startDate: startDateStr,
+      endDate: endDateStr,
+      serviceId: serviceId || 'all',
+      doctorId: doctorId || 'all',
+      userRole,
+      useStandardRules
+    });
 
     setLoading(true);
     setError(null);
 
     try {
-      const endDate = new Date(startDate);
-      endDate.setDate(startDate.getDate() + 6);
+      // Generate array of dates for the week
+      const weekDates: string[] = [];
+      console.log('🔍 WEEKLY CALENDAR: Generating week dates from:', startDateStr);
 
-      const data = await onLoadAvailability({
-        organizationId,
-        serviceId,
-        doctorId,
-        locationId,
-        startDate: startDate.toISOString().split('T')[0],
-        endDate: endDate.toISOString().split('T')[0]
-      });
+      for (let i = 0; i < 7; i++) {
+        const date = ImmutableDateSystem.addDays(startDateStr, i);
+        const dayName = ImmutableDateSystem.getDayName(date, 'es-ES');
+        weekDates.push(date);
 
-      // CRITICAL FIX: Apply 4-hour validation to real API data
-      // The API returns data with availabilityLevel, but we need to validate it against 4-hour rule
-      console.log('=== APLICANDO VALIDACIÓN 4H A DATOS REALES ===');
-      console.log('Datos originales del API:', data);
+        console.log(`📅 WEEKLY CALENDAR: Day ${i}: ${date} → ${dayName}`);
+      }
 
-      const processedData = data.map(day => {
-        console.log(`🔍 VALIDACIÓN 4H REAL - ${day.date}:`, {
-          originalAvailabilityLevel: day.availabilityLevel,
-          originalSlotsCount: day.slotsCount
-        });
+      console.log('✅ WEEKLY CALENDAR: Generated week dates:', weekDates);
 
-        // Apply 4-hour rule validation to real data
-        const MINIMUM_ADVANCE_HOURS = 4;
-        const MINIMUM_ADVANCE_MINUTES = MINIMUM_ADVANCE_HOURS * 60;
-        const now = new Date();
+      // Fetch availability for each day using the working /api/doctors/availability endpoint
+      const weeklyData: DayAvailabilityData[] = [];
 
-        // Parse date components safely
-        const [year, month, dayNum] = day.date.split('-').map(Number);
-        const dateObj = new Date(year, month - 1, dayNum);
-
-        // Check if it's a past date
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        dateObj.setHours(0, 0, 0, 0);
-        const isPastDate = dateObj.getTime() < today.getTime();
-
-        if (isPastDate) {
-          console.log(`📅 ${day.date}: FECHA PASADA - forzando availabilityLevel = 'none'`);
-          return {
-            ...day,
-            availabilityLevel: 'none' as const,
-            slotsCount: 0
-          };
-        }
-
-        // For current and future dates, check 4-hour rule
-        if (day.availabilityLevel !== 'none' && day.slotsCount > 0) {
-          // Generate typical business hours to validate against 4-hour rule
-          const businessHours = ['08:00', '09:00', '10:00', '11:00', '14:00', '15:00', '16:00', '17:00', '18:00'];
-
-          let validSlotsCount = 0;
-          businessHours.forEach(timeSlot => {
-            const [hours, minutes] = timeSlot.split(':').map(Number);
-            const slotDateTime = new Date(year, month - 1, dayNum, hours, minutes);
-
-            const timeDifferenceMs = slotDateTime.getTime() - now.getTime();
-            const timeDifferenceMinutes = Math.floor(timeDifferenceMs / (1000 * 60));
-
-            if (timeDifferenceMinutes >= MINIMUM_ADVANCE_MINUTES) {
-              validSlotsCount++;
-            }
+      for (const date of weekDates) {
+        try {
+          const params = new URLSearchParams({
+            organizationId,
+            date,
+            duration: '30'
           });
 
-          // If no slots meet the 4-hour rule, override the API data
-          if (validSlotsCount === 0) {
-            console.log(`📅 ${day.date}: SIN SLOTS VÁLIDOS (4H) - forzando availabilityLevel = 'none'`);
-            return {
-              ...day,
-              availabilityLevel: 'none' as const,
-              slotsCount: 0
-            };
-          } else {
-            // Adjust slots count based on valid slots
-            const adjustedSlotsCount = Math.min(day.slotsCount, validSlotsCount);
-            let adjustedAvailabilityLevel = day.availabilityLevel;
+          // Add optional parameters
+          if (serviceId) params.append('serviceId', serviceId);
+          if (doctorId) params.append('doctorId', doctorId);
 
-            // Recalculate availability level based on valid slots
-            if (adjustedSlotsCount <= 2) {
-              adjustedAvailabilityLevel = 'low';
-            } else if (adjustedSlotsCount <= 5) {
-              adjustedAvailabilityLevel = 'medium';
-            } else {
-              adjustedAvailabilityLevel = 'high';
-            }
-
-            console.log(`📅 ${day.date}: SLOTS AJUSTADOS (4H) - original: ${day.slotsCount}, válidos: ${validSlotsCount}, final: ${adjustedSlotsCount}, level: ${adjustedAvailabilityLevel}`);
-
-            return {
-              ...day,
-              availabilityLevel: adjustedAvailabilityLevel,
-              slotsCount: adjustedSlotsCount
-            };
+          // Apply role-based rules
+          const isPrivilegedUser = ['admin', 'staff', 'doctor', 'superadmin'].includes(userRole || 'patient');
+          if (!isPrivilegedUser || useStandardRules) {
+            params.append('useStandardRules', 'true');
           }
-        }
 
-        // If already 'none' or 0 slots, keep as is
-        console.log(`📅 ${day.date}: SIN CAMBIOS - ya era 'none' o 0 slots`);
-        return day;
+          const response = await fetch(`/api/doctors/availability?${params}`);
+
+          if (!response.ok) {
+            throw new Error(`Failed to fetch availability for ${date}`);
+          }
+
+          const data = await response.json();
+          const slots = data.data || [];
+
+          // Convert to DayAvailabilityData format
+          const safeDayName = ImmutableDateSystem.getDayName(date, 'es-ES');
+          console.log(`🔍 WEEKLY CALENDAR: Processing ${date} → dayName: ${safeDayName}`);
+
+          const dayData: DayAvailabilityData = {
+            date,
+            dayName: safeDayName,
+            slotsCount: slots.length,
+            availabilityLevel: getAvailabilityLevel(slots.length),
+            isToday: date === ImmutableDateSystem.getTodayString(),
+            isTomorrow: date === ImmutableDateSystem.addDays(ImmutableDateSystem.getTodayString(), 1),
+            isWeekend: new Date(date).getDay() === 0 || new Date(date).getDay() === 6,
+            slots: slots.map((slot: any) => ({
+              id: `${slot.doctor_id}-${slot.start_time}`,
+              time: slot.start_time,
+              doctorId: slot.doctor_id,
+              doctorName: slot.doctor_name,
+              available: slot.available,
+              specialization: slot.specialization,
+              consultationFee: slot.consultation_fee
+            }))
+          };
+
+          weeklyData.push(dayData);
+
+          console.log(`✅ WEEKLY CALENDAR: Fetched ${slots.length} slots for ${date}`);
+
+        } catch (dayError) {
+          console.error(`❌ WEEKLY CALENDAR: Error fetching ${date}:`, dayError);
+
+          // Add empty day data to maintain week structure
+          weeklyData.push({
+            date,
+            dayName: ImmutableDateSystem.getDayName(date, 'es-ES'),
+            slotsCount: 0,
+            availabilityLevel: 'none' as const,
+            isToday: date === ImmutableDateSystem.getTodayString(),
+            isTomorrow: date === ImmutableDateSystem.addDays(ImmutableDateSystem.getTodayString(), 1),
+            isWeekend: new Date(date).getDay() === 0 || new Date(date).getDay() === 6,
+            slots: []
+          });
+        }
+      }
+
+      console.log('✅ WEEKLY CALENDAR: All data fetched successfully:', {
+        daysCount: weeklyData.length,
+        totalSlots: weeklyData.reduce((sum, day) => sum + day.slotsCount, 0),
+        dateRange: `${startDateStr} to ${endDateStr}`
       });
 
-      console.log('Datos procesados con validación 4H:', processedData);
-      console.log('===============================================');
+      setWeekData(weeklyData);
+      setError(null);
 
-      setWeekData(processedData);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error cargando disponibilidad');
-      console.error('Error loading availability data:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      console.error('❌ WEEKLY CALENDAR: Error loading weekly data:', errorMessage);
+      setError(errorMessage);
+      setWeekData([]);
     } finally {
       setLoading(false);
     }
-  }, [startDate, organizationId, serviceId, doctorId, locationId, onLoadAvailability]);
+  }, [organizationId, startDateStr, endDateStr, serviceId, doctorId, userRole, useStandardRules]);
 
+  const refetch = useCallback(async () => {
+    await fetchWeeklyAvailability();
+  }, [fetchWeeklyAvailability]);
+
+  // Load data when parameters change
   useEffect(() => {
-    loadWeekData();
-  }, [loadWeekData]);
+    if (organizationId) {
+      fetchWeeklyAvailability();
+    }
+  }, [organizationId, fetchWeeklyAvailability]);
 
-  return { weekData, loading, error, refetch: loadWeekData };
+  // Return hook interface compatible with existing component
+  return {
+    weekData,
+    loading,
+    error: error || null,
+    refetch
+  };
 };
 
 /**
@@ -414,13 +360,23 @@ const WeeklyAvailabilitySelector: React.FC<WeeklyAvailabilitySelectorProps> = ({
   compactSuggestions = false,
   onLoadAvailability,
   loading: externalLoading = false,
-  className = ''
+  className = '',
+  userRole = 'patient',
+  useStandardRules = false
 }) => {
   const [currentWeek, setCurrentWeek] = useState(() => {
-    const today = new Date();
-    const startOfWeek = new Date(today);
-    startOfWeek.setDate(today.getDate() - today.getDay()); // Domingo como inicio de semana
-    return startOfWeek;
+    // DISRUPTIVE CHANGE: Use ImmutableDateSystem for all date operations
+    const todayStr = ImmutableDateSystem.getTodayString();
+    const startOfWeekStr = ImmutableDateSystem.getStartOfWeek(todayStr);
+
+    console.log('🔧 WeeklyAvailabilitySelector: Using ImmutableDateSystem for initialization', {
+      today: todayStr,
+      startOfWeek: startOfWeekStr
+    });
+
+    // Convert back to Date object for compatibility with existing code
+    const components = ImmutableDateSystem.parseDate(startOfWeekStr);
+    return new Date(components.year, components.month - 1, components.day);
   });
 
   const { weekData, loading: dataLoading, error, refetch } = useWeeklyAvailabilityData(
@@ -429,7 +385,9 @@ const WeeklyAvailabilitySelector: React.FC<WeeklyAvailabilitySelectorProps> = ({
     serviceId,
     doctorId,
     locationId,
-    onLoadAvailability
+    onLoadAvailability,
+    userRole as 'patient' | 'admin' | 'staff' | 'doctor' | 'superadmin',
+    useStandardRules
   );
 
   // Smart Suggestions state
@@ -440,59 +398,80 @@ const WeeklyAvailabilitySelector: React.FC<WeeklyAvailabilitySelectorProps> = ({
   const isLoading = externalLoading || dataLoading;
 
   /**
-   * CRITICAL FEATURE: UI-level date blocking validation
-   * SIMPLIFIED: Now that 4-hour rule is integrated into weekData generation,
-   * we primarily use availabilityLevel to determine blocking state
+   * ROLE-BASED DATE VALIDATION (MVP SIMPLIFIED)
+   * Standard users (patients): 24-hour advance booking rule
+   * Privileged users (admin/staff): Real-time booking allowed
    */
   const dateValidationResults = useMemo(() => {
     if (weekData.length === 0) return {};
 
-    console.log('=== DEBUG DATE BLOCKING VALIDATION (SIMPLIFIED) ===');
+    console.log('=== ROLE-BASED DATE VALIDATION (MVP) ===');
+    console.log(`User Role: ${userRole}, Use Standard Rules: ${useStandardRules}`);
 
     const validationResults: Record<string, DateValidationResult> = {};
+    const isPrivilegedUser = ['admin', 'staff', 'doctor', 'superadmin'].includes(userRole);
+    const applyPrivilegedRules = isPrivilegedUser && !useStandardRules;
 
     weekData.forEach(day => {
-      const isBlocked = day.availabilityLevel === 'none';
+      // Parse date components safely to avoid timezone issues
+      const [year, month, dayNum] = day.date.split('-').map(Number);
+      const dayDateObj = new Date(year, month - 1, dayNum);
 
-      // CRITICAL FIX: Proper date comparison logic to distinguish between past dates and 4-hour rule blocks
+      // Get today's date normalized to midnight for comparison
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      dayDateObj.setHours(0, 0, 0, 0);
+
+      // Check if it's actually a past date
+      const isPastDate = dayDateObj.getTime() < today.getTime();
+      const isToday = dayDateObj.getTime() === today.getTime();
+
+      let isBlocked = false;
       let reason: string | undefined = undefined;
 
-      if (isBlocked) {
-        // Parse date components safely to avoid timezone issues
-        const [year, month, dayNum] = day.date.split('-').map(Number);
-        const dayDateObj = new Date(year, month - 1, dayNum);
-
-        // Get today's date normalized to midnight for comparison
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        dayDateObj.setHours(0, 0, 0, 0);
-
-        // Check if it's actually a past date
-        const isPastDate = dayDateObj.getTime() < today.getTime();
-
-        if (isPastDate) {
-          reason = 'Fecha pasada - No se pueden agendar citas en fechas anteriores';
-          console.log(`🔍 REASON LOGIC - ${day.date}: FECHA PASADA detectada (${dayDateObj.toDateString()} < ${today.toDateString()})`);
+      if (isPastDate) {
+        // Past dates are always blocked for everyone
+        isBlocked = true;
+        reason = 'Fecha pasada - No se pueden agendar citas en fechas anteriores';
+        console.log(`🔍 ${day.date}: FECHA PASADA - bloqueada para todos los roles`);
+      } else if (applyPrivilegedRules) {
+        // PRIVILEGED USERS: Can book same-day, only check availability
+        isBlocked = day.availabilityLevel === 'none';
+        if (isBlocked) {
+          reason = 'No hay horarios disponibles para esta fecha';
+        }
+        console.log(`🔐 ${day.date}: PRIVILEGED USER - isBlocked=${isBlocked}, availabilityLevel=${day.availabilityLevel}`);
+      } else {
+        // STANDARD USERS (PATIENTS): 24-hour advance booking rule
+        if (isToday) {
+          isBlocked = true;
+          reason = 'Los pacientes deben reservar citas con al menos 24 horas de anticipación';
+          console.log(`🔒 ${day.date}: STANDARD USER - bloqueado por regla 24h`);
         } else {
-          // It's a current or future date blocked by 4-hour rule
-          reason = 'Reserva con mínimo 4 horas de anticipación requerida';
-          console.log(`🔍 REASON LOGIC - ${day.date}: REGLA 4H detectada (${dayDateObj.toDateString()} >= ${today.toDateString()})`);
+          // Future dates: check availability
+          isBlocked = day.availabilityLevel === 'none';
+          if (isBlocked) {
+            reason = 'No hay horarios disponibles para esta fecha';
+          }
+          console.log(`📅 ${day.date}: STANDARD USER - isBlocked=${isBlocked}, availabilityLevel=${day.availabilityLevel}`);
         }
       }
 
       validationResults[day.date] = {
         isValid: !isBlocked,
-        reason
+        reason,
+        userRole,
+        appliedRule: applyPrivilegedRules ? 'privileged' : 'standard'
       };
 
-      console.log(`📅 ${day.date}: availabilityLevel=${day.availabilityLevel}, isBlocked=${isBlocked}, reason="${reason}"`);
+      console.log(`📅 ${day.date}: isValid=${!isBlocked}, reason="${reason}", appliedRule=${applyPrivilegedRules ? 'privileged' : 'standard'}`);
     });
 
-    console.log('Simplified validation results:', validationResults);
-    console.log('=============================================');
+    console.log('Role-based validation results:', validationResults);
+    console.log('==========================================');
 
     return validationResults;
-  }, [weekData]);
+  }, [weekData, userRole, useStandardRules]);
 
   /**
    * Enhanced week data with blocking information
@@ -512,145 +491,213 @@ const WeeklyAvailabilitySelector: React.FC<WeeklyAvailabilitySelectorProps> = ({
   }, [weekData, dateValidationResults]);
 
   /**
-   * Navegar entre semanas
+   * DISRUPTIVE NAVIGATION - Uses ImmutableDateSystem for displacement-safe navigation
    */
   const navigateWeek = (direction: 'prev' | 'next') => {
-    // DEBUG: Log navegación semanal
-    console.log('=== DEBUG NAVEGACIÓN SEMANAL ===');
-    console.log('Dirección:', direction);
-    console.log('currentWeek actual:', currentWeek);
-    console.log('currentWeek ISO:', currentWeek.toISOString());
-    console.log('minDate prop:', minDate);
+    console.log('=== DISRUPTIVE NAVIGATION (ImmutableDateSystem) ===');
+    console.log('Direction:', direction);
 
-    const newWeek = new Date(currentWeek);
-    newWeek.setDate(currentWeek.getDate() + (direction === 'next' ? 7 : -7));
+    // Convert current week to string for ImmutableDateSystem operations
+    const currentWeekStr = currentWeek.toISOString().split('T')[0];
+    console.log('Current week string:', currentWeekStr);
 
-    console.log('newWeek calculada:', newWeek);
-    console.log('newWeek ISO:', newWeek.toISOString());
+    // Use ImmutableDateSystem for displacement-safe navigation
+    const daysToAdd = direction === 'next' ? 7 : -7;
+    const newWeekStr = ImmutableDateSystem.addDays(currentWeekStr, daysToAdd);
+    console.log('🔧 WeeklyAvailabilitySelector: Using ImmutableDateSystem.addDays for navigation');
+    console.log('New week string:', newWeekStr);
 
-    // Validar fecha mínima
+    // Validate minimum date constraint
     if (minDate && direction === 'prev') {
-      const minDateObj = new Date(minDate);
-      console.log('minDateObj:', minDateObj);
-      console.log('Comparación newWeek < minDateObj:', newWeek < minDateObj);
+      const comparison = ImmutableDateSystem.compareDates(newWeekStr, minDate);
+      console.log('MinDate comparison:', { newWeekStr, minDate, comparison });
 
-      if (newWeek < minDateObj) {
-        console.log('BLOQUEADO por minDate - no se permite navegar antes de fecha mínima');
-        console.log('================================');
-        return; // No permitir navegar antes de la fecha mínima
-      }
-    }
-
-    // Validar que no se navegue a semanas completamente en el pasado
-    if (direction === 'prev') {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      console.log('today normalizado:', today);
-
-      // Calcular el último día de la nueva semana
-      const endOfNewWeek = new Date(newWeek);
-      endOfNewWeek.setDate(newWeek.getDate() + 6);
-      endOfNewWeek.setHours(0, 0, 0, 0);
-      console.log('endOfNewWeek:', endOfNewWeek);
-      console.log('Comparación endOfNewWeek < today:', endOfNewWeek.getTime() < today.getTime());
-
-      // Si toda la semana está en el pasado, no permitir navegación
-      if (endOfNewWeek.getTime() < today.getTime()) {
-        console.log('BLOQUEADO por semana en el pasado');
-        console.log('================================');
+      if (comparison < 0) {
+        console.log('BLOCKED by minDate - navigation not allowed before minimum date');
         return;
       }
     }
 
-    console.log('NAVEGACIÓN PERMITIDA - actualizando currentWeek');
-    console.log('================================');
-    setCurrentWeek(newWeek);
+    // Validate that we don't navigate to completely past weeks
+    if (direction === 'prev') {
+      const todayStr = ImmutableDateSystem.getTodayString();
+      const endOfNewWeekStr = ImmutableDateSystem.addDays(newWeekStr, 6);
+      const comparison = ImmutableDateSystem.compareDates(endOfNewWeekStr, todayStr);
+
+      console.log('Past week validation:', {
+        todayStr,
+        endOfNewWeekStr,
+        comparison,
+        isWeekInPast: comparison < 0
+      });
+
+      if (comparison < 0) {
+        console.log('BLOCKED by past week - entire week is in the past');
+        return;
+      }
+    }
+
+    // Convert back to Date object for state update
+    const components = ImmutableDateSystem.parseDate(newWeekStr);
+    const newWeekDate = new Date(components.year, components.month - 1, components.day);
+
+    console.log('NAVIGATION ALLOWED - updating currentWeek');
+    console.log('New week date object:', newWeekDate);
+    console.log('================================================');
+
+    setCurrentWeek(newWeekDate);
   };
 
   /**
-   * Formatear rango de semana
+   * Formatear rango de semana - FIXED to ensure consistency with calendar grid
    */
   const formatWeekRange = (startDate: Date) => {
-    const endDate = new Date(startDate);
-    endDate.setDate(startDate.getDate() + 6);
-    
-    const startDay = startDate.getDate();
-    const endDay = endDate.getDate();
-    const month = startDate.toLocaleDateString('es-ES', { month: 'long' });
-    const year = startDate.getFullYear();
-    
-    return `${startDay}-${endDay} ${month} ${year}`;
+    // CRITICAL FIX: Always use the actual start of week to match calendar grid
+    const inputDateStr = startDate.toISOString().split('T')[0];
+    const actualStartOfWeek = ImmutableDateSystem.getStartOfWeek(inputDateStr);
+    const endDateStr = ImmutableDateSystem.addDays(actualStartOfWeek, 6);
+
+    console.log('🔍 WEEK RANGE CALCULATION: formatWeekRange called');
+    console.log('📅 WEEK RANGE: Input startDate (Date object):', startDate);
+    console.log('📅 WEEK RANGE: Input converted to string:', inputDateStr);
+    console.log('🔧 WEEK RANGE: FIXED - Using actual start of week:', actualStartOfWeek);
+    console.log('📅 WEEK RANGE: Calculated end date:', endDateStr);
+
+    // Parse the actual start and end dates for display
+    const startComponents = ImmutableDateSystem.parseDate(actualStartOfWeek);
+    const endComponents = ImmutableDateSystem.parseDate(endDateStr);
+
+    console.log('🚨 WEEK RANGE: CONSISTENCY CHECK:', {
+      originalInput: inputDateStr,
+      actualStartOfWeek: actualStartOfWeek,
+      wasFixed: inputDateStr !== actualStartOfWeek,
+      startDay: startComponents.day,
+      endDay: endComponents.day
+    });
+
+    // Use the actual start of week for month/year display
+    const startDateObj = new Date(startComponents.year, startComponents.month - 1, startComponents.day);
+    const month = startDateObj.toLocaleDateString('es-ES', { month: 'long' });
+    const year = startComponents.year;
+
+    const weekRangeText = `${startComponents.day}-${endComponents.day} ${month} ${year}`;
+    console.log('📅 WEEK RANGE: Final range text (FIXED):', weekRangeText);
+    console.log('🔧 WeeklyAvailabilitySelector: Using ImmutableDateSystem for consistent week range');
+
+    return weekRangeText;
   };
 
   /**
-   * Manejar selección de fecha con validación de bloqueo
+   * DISRUPTIVE DATE SELECTION - Uses ImmutableDateSystem for comprehensive validation
    */
   const handleDateSelect = (date: string) => {
-    // DEBUG: Log selección de fecha con análisis timezone
-    console.log('=== DEBUG SELECCIÓN FECHA (TIMEZONE-SAFE + BLOCKING) ===');
-    console.log('Fecha seleccionada (string):', date);
+    console.log('🔍 WEEKLY SELECTOR: handleDateSelect called with:', date);
+    console.log('🔧 WEEKLY SELECTOR: Using ImmutableDateSystem for validation');
 
-    // CRITICAL FEATURE: Check if date is blocked by UI validation
-    const validation = dateValidationResults[date];
-    const isBlocked = validation && !validation.isValid;
+    // STEP 1: Comprehensive date validation using ImmutableDateSystem
+    const validation = ImmutableDateSystem.validateAndNormalize(date, 'WeeklyAvailabilitySelector');
 
-    console.log('Validación de bloqueo:');
-    console.log('  - validation:', validation);
-    console.log('  - isBlocked:', isBlocked);
-    console.log('  - blockReason:', validation?.reason);
+    if (!validation.isValid) {
+      console.error('❌ WEEKLY SELECTOR: Date validation failed:', validation.error);
+      alert(`Fecha inválida: ${validation.error}`);
+
+      // Track validation failure
+      DataIntegrityValidator.logDataTransformation(
+        'WeeklyAvailabilitySelector',
+        'DATE_VALIDATION_FAILED',
+        { originalDate: date },
+        { error: validation.error },
+        ['ImmutableDateSystem.validateAndNormalize']
+      );
+      return false;
+    }
+
+    // STEP 2: Check for date displacement
+    if (validation.displacement?.detected) {
+      console.error('🚨 WEEKLY SELECTOR: DATE DISPLACEMENT DETECTED!', {
+        originalDate: date,
+        normalizedDate: validation.normalizedDate,
+        daysDifference: validation.displacement.daysDifference
+      });
+
+      // Track displacement event
+      DataIntegrityValidator.logDataTransformation(
+        'WeeklyAvailabilitySelector',
+        'DATE_DISPLACEMENT_DETECTED',
+        { originalDate: date },
+        {
+          normalizedDate: validation.normalizedDate,
+          daysDifference: validation.displacement.daysDifference
+        },
+        ['ImmutableDateSystem.validateAndNormalize']
+      );
+
+      alert(`Advertencia: Se detectó un desplazamiento de fecha. Usando fecha corregida: ${validation.normalizedDate}`);
+    }
+
+    const validatedDate = validation.normalizedDate || date;
+    console.log('✅ WEEKLY SELECTOR: Using validated date:', validatedDate);
+
+    // STEP 3: Business rule validation (role-based blocking)
+    const roleValidation = dateValidationResults[validatedDate];
+    const isBlocked = roleValidation && !roleValidation.isValid;
 
     if (isBlocked) {
-      console.log('🚫 FECHA BLOQUEADA - No se permite selección');
-      console.log('Razón:', validation?.reason);
-      console.log('=======================================');
+      console.log('🚫 WEEKLY SELECTOR: Date blocked by business rules');
+      console.log('Razón:', roleValidation?.reason);
 
-      // Show user feedback (could be enhanced with toast notification)
-      alert(`Esta fecha no está disponible: ${validation?.reason}`);
-      return;
+      // Track business rule blocking
+      if (window.trackDateEvent) {
+        window.trackDateEvent('DATE_BLOCKED_BY_BUSINESS_RULES', {
+          date: validatedDate,
+          reason: roleValidation?.reason,
+          userRole,
+          appliedRule: roleValidation?.appliedRule
+        }, 'WeeklyAvailabilitySelector');
+      }
+
+      alert(`Esta fecha no está disponible: ${roleValidation?.reason}`);
+      return false;
     }
 
-    // CRITICAL FIX: Create timezone-safe Date object
-    // Problem: new Date("2025-05-29") creates May 28 in GMT-0500
-    // Solution: Parse date components manually to avoid UTC interpretation
-    const [year, month, day] = date.split('-').map(Number);
-    const dateObj = new Date(year, month - 1, day); // month is 0-indexed
-    const localDateString = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`;
+    // STEP 4: Additional validation (minDate) using ImmutableDateSystem
+    if (minDate) {
+      const comparison = ImmutableDateSystem.compareDates(validatedDate, minDate);
+      if (comparison < 0) {
+        console.log('🚫 WEEKLY SELECTOR: Date blocked by minDate constraint');
 
-    // Also create UTC version for comparison
-    const dateObjUTC = new Date(date); // This creates the problematic UTC interpretation
+        DataIntegrityValidator.logDataTransformation(
+          'WeeklyAvailabilitySelector',
+          'DATE_BLOCKED_BY_MIN_DATE',
+          { date: validatedDate, minDate },
+          { blocked: true, reason: 'Date before minimum allowed' },
+          ['ImmutableDateSystem.compareDates']
+        );
 
-    console.log('Date object creado (timezone-safe):', dateObj);
-    console.log('Date object creado (UTC interpretation):', dateObjUTC);
-    console.log('Date object ISO (UTC):', dateObjUTC.toISOString());
-    console.log('Date object local string (timezone-safe):', localDateString);
-    console.log('Timezone offset (minutes):', dateObj.getTimezoneOffset());
-
-    // CRITICAL FIX: Correct timezone desfase detection logic using timezone-safe objects
-    const utcDateStringFromUTC = dateObjUTC.toISOString().split('T')[0];
-    const utcDateStringFromLocal = dateObj.toISOString().split('T')[0];
-    const hasTimezoneDesfase = date !== utcDateStringFromUTC;
-
-    console.log('Comparación timezone (CORREGIDA):');
-    console.log('  - date (input):', date);
-    console.log('  - utcDateString (from UTC obj):', utcDateStringFromUTC);
-    console.log('  - utcDateString (from local obj):', utcDateStringFromLocal);
-    console.log('  - localDateString (timezone-safe):', localDateString);
-    console.log('¿Hay desfase timezone?:', hasTimezoneDesfase);
-    console.log('¿Date objects son consistentes?:', localDateString === date);
-
-    console.log('minDate:', minDate);
-    console.log('Comparación date < minDate:', date < minDate);
-
-    // Validar fecha mínima
-    if (minDate && date < minDate) {
-      console.log('BLOQUEADO por minDate');
-      console.log('=======================================');
-      return;
+        alert('Esta fecha no está disponible: Fecha anterior al mínimo permitido');
+        return false;
+      }
     }
 
-    console.log('✅ FECHA VÁLIDA - LLAMANDO onDateSelect con fecha timezone-safe:', date);
-    onDateSelect(date);
-    console.log('=======================================');
+    console.log('✅ WEEKLY SELECTOR: All validations passed, calling onDateSelect');
+
+    // STEP 5: Track successful date selection
+    DataIntegrityValidator.logDataTransformation(
+      'WeeklyAvailabilitySelector',
+      'DATE_SELECTION_SUCCESS',
+      { originalInput: date },
+      {
+        validatedDate: validatedDate,
+        displacement: validation.displacement?.detected || false,
+        businessRulesApplied: true
+      },
+      ['ImmutableDateSystem.validateAndNormalize', 'Role-based validation', 'MinDate validation']
+    );
+
+    // STEP 6: Call parent callback with validated date
+    onDateSelect(validatedDate);
+    console.log('🎯 WEEKLY SELECTOR: Date selection completed successfully');
+    return true;
   };
 
   /**
@@ -812,11 +859,26 @@ const WeeklyAvailabilitySelector: React.FC<WeeklyAvailabilitySelectorProps> = ({
           <ChevronLeft className="h-4 w-4 mr-1" />
           Anterior
         </button>
-        
-        <h4 className="text-lg font-semibold text-gray-900">
-          {formatWeekRange(currentWeek)}
-        </h4>
-        
+
+        <div className="flex items-center space-x-4">
+          <h4 className="text-lg font-semibold text-gray-900">
+            {formatWeekRange(currentWeek)}
+          </h4>
+
+          {/* Manual Load Button - Temporary fix for infinite polling */}
+          <button
+            type="button"
+            onClick={() => {
+              console.log('🔄 Manual load triggered from WeeklyAvailabilitySelector');
+              refetch();
+            }}
+            disabled={isLoading}
+            className="px-3 py-1 text-xs font-medium text-blue-700 bg-blue-100 border border-blue-300 rounded-md hover:bg-blue-200 disabled:opacity-50 transition-colors"
+          >
+            {isLoading ? 'Cargando...' : 'Cargar Datos'}
+          </button>
+        </div>
+
         <button
           type="button"
           onClick={() => navigateWeek('next')}
