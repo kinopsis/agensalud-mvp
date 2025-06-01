@@ -30,9 +30,13 @@ import FlowSelector, { type BookingFlowType } from './FlowSelector';
 import ExpressConfirmation from './ExpressConfirmation';
 import ExpressSearchingState from './ExpressSearchingState';
 import EnhancedTimeSlotSelector from './EnhancedTimeSlotSelector';
-import WeeklyAvailabilitySelector from './WeeklyAvailabilitySelector';
+import EnhancedWeeklyAvailabilitySelector from './EnhancedWeeklyAvailabilitySelector';
+import { ImmutableDateSystem } from '@/lib/core/ImmutableDateSystem';
+import { DataIntegrityValidator } from '@/lib/core/DataIntegrityValidator';
 import { OptimalAppointmentFinder, type OptimalAppointmentResult } from '@/lib/appointments/OptimalAppointmentFinder';
 import { useWeeklyAvailability, type DayAvailabilityData } from '@/hooks/useAvailabilityData';
+import { useAuth } from '@/contexts/auth-context';
+
 
 export default function UnifiedAppointmentFlow({
   organizationId,
@@ -43,10 +47,15 @@ export default function UnifiedAppointmentFlow({
   initialData,
   mode = 'manual'
 }: AppointmentBookingProps) {
+  const { profile } = useAuth();
   const [currentStep, setCurrentStep] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showCancelDialog, setShowCancelDialog] = useState(false);
+
+  // CRITICAL FIX: Get user role for role-based availability validation
+  const userRole = (profile?.role as 'patient' | 'admin' | 'staff' | 'doctor' | 'superadmin') || 'patient';
+  const useStandardRules = false; // Allow privileged users to use their privileges
 
   // Hybrid flow states
   const [bookingFlow, setBookingFlow] = useState<BookingFlowType | null>(null);
@@ -77,6 +86,9 @@ export default function UnifiedAppointmentFlow({
     reason: initialData?.reason || '',
     notes: initialData?.notes || ''
   });
+
+  // CRITICAL FIX: Add optimistic date state for immediate header updates
+  const [optimisticDate, setOptimisticDate] = useState<string | null>(null);
 
   const [selectedSlot, setSelectedSlot] = useState<AvailabilitySlot | null>(null);
 
@@ -225,6 +237,12 @@ export default function UnifiedAppointmentFlow({
       if (params.doctorId) url += `&doctorId=${params.doctorId}`;
       if (params.locationId) url += `&locationId=${params.locationId}`;
 
+      // CRITICAL FIX: Add user role and standard rules parameters for consistent availability
+      url += `&userRole=${encodeURIComponent(userRole)}`;
+      url += `&useStandardRules=${useStandardRules}`;
+
+      console.log(`🔄 NEW APPOINTMENT FLOW: Loading availability with role=${userRole}, useStandardRules=${useStandardRules}`);
+
       const response = await fetch(url);
       if (!response.ok) {
         throw new Error(`Error ${response.status}: ${response.statusText}`);
@@ -271,6 +289,19 @@ export default function UnifiedAppointmentFlow({
           slots: dayData?.slots || []
         });
       }
+
+      // CRITICAL DEBUG: Log detailed comparison data
+      console.log('✅ NEW APPOINTMENT FLOW: Weekly availability data loaded', {
+        processedData,
+        rawApiResponse: result.data,
+        sampleDayComparison: Object.keys(result.data).slice(0, 3).map(dateString => ({
+          date: dateString,
+          apiAvailableSlots: result.data[dateString]?.availableSlots,
+          apiTotalSlots: result.data[dateString]?.totalSlots,
+          apiSlotsArray: result.data[dateString]?.slots?.length,
+          processedSlotsCount: processedData.find(d => d.date === dateString)?.slotsCount
+        }))
+      });
 
       return processedData;
     } catch (error) {
@@ -338,10 +369,122 @@ export default function UnifiedAppointmentFlow({
     handleNext();
   };
 
+  /**
+   * DISRUPTIVE DATE SELECTION - Uses ImmutableDateSystem for comprehensive validation
+   */
   const handleDateSelect = (date: string) => {
-    setFormData(prev => ({ ...prev, appointment_date: date, appointment_time: '' }));
+    console.log('🔍 UNIFIED FLOW: handleDateSelect called with:', date);
+    console.log('🔧 UNIFIED FLOW: Using ImmutableDateSystem for validation');
+    console.log('📊 UNIFIED FLOW: Current state before update:', {
+      optimisticDate,
+      formDataDate: formData.appointment_date,
+      currentStep
+    });
+
+    // CRITICAL FIX: Set optimistic date immediately to prevent header displacement
+    setOptimisticDate(date);
+    console.log('✅ UNIFIED FLOW: Optimistic date set immediately:', date);
+
+    // STEP 1: Comprehensive date validation using ImmutableDateSystem
+    const validation = ImmutableDateSystem.validateAndNormalize(date, 'UnifiedAppointmentFlow');
+
+    if (!validation.isValid) {
+      console.error('❌ UNIFIED FLOW: Date validation failed:', validation.error);
+      setError(`Fecha inválida: ${validation.error}`);
+
+      // Log validation failure
+      DataIntegrityValidator.logDataTransformation(
+        'UnifiedAppointmentFlow',
+        'DATE_VALIDATION_FAILED',
+        { originalDate: date },
+        { error: validation.error },
+        ['ImmutableDateSystem.validateAndNormalize']
+      );
+      return;
+    }
+
+    // STEP 2: Check for date displacement
+    if (validation.displacement?.detected) {
+      console.error('🚨 UNIFIED FLOW: DATE DISPLACEMENT DETECTED!', {
+        originalDate: date,
+        normalizedDate: validation.normalizedDate,
+        daysDifference: validation.displacement.daysDifference
+      });
+
+      // Track displacement event
+      if (window.trackDateEvent) {
+        window.trackDateEvent('DATE_DISPLACEMENT_DETECTED', {
+          originalDate: date,
+          normalizedDate: validation.normalizedDate,
+          daysDifference: validation.displacement.daysDifference
+        }, 'UnifiedAppointmentFlow');
+      }
+
+      setError(`Advertencia: Se detectó un desplazamiento de fecha. Usando fecha corregida: ${validation.normalizedDate}`);
+    }
+
+    const validatedDate = validation.normalizedDate || date;
+    console.log('✅ UNIFIED FLOW: Using validated date:', validatedDate);
+
+    // STEP 3: Business rule validation using ImmutableDateSystem
+    const todayStr = ImmutableDateSystem.getTodayString();
+    const isPastDate = ImmutableDateSystem.compareDates(validatedDate, todayStr) < 0;
+
+    if (isPastDate) {
+      console.log('🚫 UNIFIED FLOW: Past date blocked');
+      setError('No se pueden agendar citas en fechas pasadas');
+      return;
+    }
+
+    // STEP 4: Role-based validation (24-hour advance booking rule)
+    const isToday = ImmutableDateSystem.compareDates(validatedDate, todayStr) === 0;
+    const isPrivilegedUser = ['admin', 'staff', 'doctor', 'superadmin'].includes(userRole);
+    const applyStandardRules = !isPrivilegedUser || useStandardRules;
+
+    if (isToday && applyStandardRules) {
+      console.log('🚫 UNIFIED FLOW: Same-day booking blocked for standard users');
+      setError('Los pacientes deben reservar citas con al menos 24 horas de anticipación');
+      return;
+    }
+
+    console.log('✅ UNIFIED FLOW: All validations passed, updating form data');
+
+    // STEP 5: Track successful date selection
+    if (window.trackDateEvent) {
+      window.trackDateEvent('DATE_SELECTION_SUCCESS', {
+        originalInput: date,
+        validatedDate: validatedDate,
+        displacement: validation.displacement?.detected || false,
+        formDataUpdate: true
+      }, 'UnifiedAppointmentFlow');
+    }
+
+    // STEP 6: Update form data with validated date
+    setFormData(prev => {
+      const newFormData = {
+        ...prev,
+        appointment_date: validatedDate,
+        appointment_time: ''
+      };
+
+      console.log('📊 UNIFIED FLOW: Form data updated:', {
+        previousDate: prev.appointment_date,
+        newDate: validatedDate,
+        displacement: prev.appointment_date !== validatedDate
+      });
+
+      return newFormData;
+    });
+
+    // CRITICAL FIX: Don't clear optimistic date immediately - let it persist until step change
+    // This ensures the title shows the correct date while transitioning to the next step
+    console.log('✅ UNIFIED FLOW: Keeping optimistic date for step transition');
+
     setSelectedSlot(null);
+    setError(null); // Clear any previous errors
     handleNext();
+
+    console.log('🎯 UNIFIED FLOW: Date selection completed successfully');
   };
 
   const handleSlotSelect = (slot: AvailabilitySlot) => {
@@ -512,6 +655,18 @@ export default function UnifiedAppointmentFlow({
       setIsSearchingOptimal(false);
     }
   }, [currentStep, bookingFlow]);
+
+  // CRITICAL FIX: Clear optimistic date when step changes to prevent stale date display
+  useEffect(() => {
+    // Clear optimistic date when moving between steps to ensure fresh state
+    if (optimisticDate) {
+      console.log('🔄 UNIFIED FLOW: Clearing optimistic date on step change:', {
+        currentStep,
+        optimisticDate
+      });
+      setOptimisticDate(null);
+    }
+  }, [currentStep]);
 
   // Handle appointment booking
   const handleBookAppointment = async () => {
@@ -686,7 +841,7 @@ export default function UnifiedAppointmentFlow({
           const steps = getSteps();
           const dateStepIndex = steps.findIndex(step => step.id === 'date');
           return currentStep === dateStepIndex && bookingFlow === 'personalized' && (
-            <WeeklyAvailabilitySelector
+            <EnhancedWeeklyAvailabilitySelector
               title="¿Cuándo te gustaría la cita?"
               subtitle="Selecciona la fecha que mejor te convenga"
               selectedDate={formData.appointment_date}
@@ -695,17 +850,15 @@ export default function UnifiedAppointmentFlow({
               serviceId={formData.service_id}
               doctorId={formData.doctor_id}
               locationId={formData.location_id}
-              minDate={(() => {
-                // CRITICAL FIX: Use timezone-safe date formatting to prevent UTC conversion issues
-                const now = new Date();
-                return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-              })()}
+              minDate={ImmutableDateSystem.getTodayString()}
               showDensityIndicators={true}
               enableSmartSuggestions={mode === 'ai' && !!aiContext}
               aiContext={aiContext || undefined}
               entryMode={mode}
-              onLoadAvailability={loadWeeklyAvailability}
+
               loading={loading}
+              userRole={userRole}
+              useStandardRules={useStandardRules}
             />
           );
         })()}
@@ -716,7 +869,11 @@ export default function UnifiedAppointmentFlow({
           const timeStepIndex = steps.findIndex(step => step.id === 'time');
           return currentStep === timeStepIndex && bookingFlow === 'personalized' && (
             <EnhancedTimeSlotSelector
-              title={`Horarios disponibles para ${formData.appointment_date}`}
+              title={`Horarios disponibles para ${(() => {
+                const displayDate = optimisticDate || formData.appointment_date;
+                console.log('🔍 TITLE GENERATION:', { optimisticDate, formDataDate: formData.appointment_date, displayDate });
+                return displayDate;
+              })()}`}
               subtitle="Selecciona el horario que prefieras"
               slots={availability}
               selectedSlot={selectedSlot}

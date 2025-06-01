@@ -35,10 +35,13 @@ import {
   Trash2
 } from 'lucide-react';
 import { AppointmentData } from './AppointmentCard';
-import WeeklyAvailabilitySelector from './WeeklyAvailabilitySelector';
+import EnhancedWeeklyAvailabilitySelector from './EnhancedWeeklyAvailabilitySelector';
 import EnhancedTimeSlotSelector from './EnhancedTimeSlotSelector';
 import CancelAppointmentModal from './CancelAppointmentModal';
 import { AvailabilitySlot } from './shared/types';
+import { useAuth } from '@/contexts/auth-context';
+import { ImmutableDateSystem } from '@/lib/core/ImmutableDateSystem';
+import { DataIntegrityValidator } from '@/lib/core/DataIntegrityValidator';
 
 /**
  * Interfaz local de AIContext compatible con WeeklyAvailabilitySelector
@@ -181,26 +184,24 @@ const generateRescheduleAIContext = (appointment: AppointmentData): AIContext =>
     preferredTimeRange = 'evening';
   }
   
-  // Generar fechas sugeridas (próximos días disponibles)
+  // DISRUPTIVE CHANGE: Use ImmutableDateSystem for displacement-safe date generation
   const suggestedDates: string[] = [];
+  const todayStr = ImmutableDateSystem.getTodayString();
 
-  // Usar fecha actual en timezone local para evitar problemas de UTC
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-
-  // Generar fechas futuras (excluyendo hoy completamente)
+  // Generate future dates using ImmutableDateSystem (displacement-safe)
   for (let i = 1; i <= 7; i++) {
-    const futureDate = new Date(today);
-    futureDate.setDate(today.getDate() + i);
-
-    // Formatear fecha en formato YYYY-MM-DD local
-    const year = futureDate.getFullYear();
-    const month = String(futureDate.getMonth() + 1).padStart(2, '0');
-    const day = String(futureDate.getDate()).padStart(2, '0');
-    const dateString = `${year}-${month}-${day}`;
-
-    suggestedDates.push(dateString);
+    const futureDate = ImmutableDateSystem.addDays(todayStr, i);
+    suggestedDates.push(futureDate);
   }
+
+  // Log transformation for debugging
+  DataIntegrityValidator.logDataTransformation(
+    'AIEnhancedRescheduleModal',
+    'GENERATE_SUGGESTED_DATES',
+    { todayStr, daysToGenerate: 7 },
+    { suggestedDates },
+    ['ImmutableDateSystem.getTodayString', 'ImmutableDateSystem.addDays']
+  );
   
   return {
     suggestedDates,
@@ -228,17 +229,26 @@ const AIEnhancedRescheduleModal: React.FC<AIEnhancedRescheduleModalProps> = ({
   loading = false,
   error = null
 }) => {
+  const { profile } = useAuth();
   const [formData, setFormData] = useState<RescheduleFormData>({
     newDate: '',
     newTime: ''
   });
+  // CRITICAL FIX: Add optimistic date state for immediate header updates
+  const [optimisticDate, setOptimisticDate] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [aiContext, setAIContext] = useState<AIContext | null>(null);
+  // CRITICAL FIX: Always use AI mode to ensure consistent availability display
+  // This forces the use of WeeklyAvailabilitySelector which has the fixed logic
   const [showAIMode, setShowAIMode] = useState(true);
   const [availableTimeSlots, setAvailableTimeSlots] = useState<AvailabilitySlot[]>([]);
   const [loadingTimeSlots, setLoadingTimeSlots] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState<AvailabilitySlot | undefined>(undefined);
   const [showCancelModal, setShowCancelModal] = useState(false);
+
+  // CRITICAL FIX: Get user role for role-based availability validation
+  const userRole = (profile?.role as 'patient' | 'admin' | 'staff' | 'doctor' | 'superadmin') || 'patient';
+  const useStandardRules = false; // Allow privileged users to use their privileges
 
   // Extract appointment data early to avoid hoisting issues
   const doctor = appointment?.doctor?.[0];
@@ -252,6 +262,8 @@ const AIEnhancedRescheduleModal: React.FC<AIEnhancedRescheduleModalProps> = ({
         newDate: '', // Start empty to force user selection
         newTime: ''
       });
+      // CRITICAL FIX: Reset optimistic date when modal opens
+      setOptimisticDate(null);
 
       // Generar contexto de IA para reagendamiento
       const context = generateRescheduleAIContext(appointment);
@@ -261,8 +273,24 @@ const AIEnhancedRescheduleModal: React.FC<AIEnhancedRescheduleModalProps> = ({
       setFormData({ newDate: '', newTime: '' });
       setAIContext(null);
       setShowAIMode(true);
+      // CRITICAL FIX: Reset optimistic date when modal closes
+      setOptimisticDate(null);
     }
   }, [isOpen, appointment]);
+
+  // CRITICAL FIX: Clear optimistic date when form data is successfully updated
+  useEffect(() => {
+    if (formData.newDate && optimisticDate && formData.newDate !== optimisticDate) {
+      console.log('🔄 RESCHEDULE: Form data updated, clearing optimistic date', {
+        optimisticDate,
+        formDataDate: formData.newDate
+      });
+      setOptimisticDate(null);
+    }
+  }, [formData.newDate, optimisticDate]);
+
+  // DISRUPTIVE CHANGE: Remove old loadAvailabilityData function
+  // The new EnhancedWeeklyAvailabilitySelector handles data loading through UnifiedAppointmentDataService
 
   /**
    * Maneja la selección de fecha desde WeeklyAvailabilitySelector
@@ -330,18 +358,129 @@ const AIEnhancedRescheduleModal: React.FC<AIEnhancedRescheduleModalProps> = ({
     }
   };
 
+  /**
+   * DISRUPTIVE DATE SELECTION - Uses ImmutableDateSystem for comprehensive validation
+   */
   const handleDateSelect = useCallback((date: string, time?: string) => {
-    setFormData(prev => ({
-      ...prev,
-      newDate: date,
-      newTime: time || prev.newTime
-    }));
+    console.log('🔍 RESCHEDULE: handleDateSelect called with:', { date, time });
+    console.log('🔧 RESCHEDULE: Using ImmutableDateSystem for validation');
+    console.log('📊 RESCHEDULE: Current state before update:', {
+      optimisticDate,
+      formDataDate: formData.newDate,
+      loadingTimeSlots
+    });
 
-    // Cargar time slots cuando se selecciona una fecha
-    if (date && date !== formData.newDate) {
-      loadTimeSlots(date);
+    // CRITICAL FIX: Set optimistic date immediately to prevent header displacement
+    setOptimisticDate(date);
+    console.log('✅ RESCHEDULE: Optimistic date set immediately:', date);
+    console.log('🔄 RESCHEDULE: State synchronization check:', {
+      optimisticDate: date,
+      formDataDate: formData.newDate,
+      willCauseSync: date !== formData.newDate
+    });
+
+    // STEP 1: Comprehensive date validation using ImmutableDateSystem
+    const validation = ImmutableDateSystem.validateAndNormalize(date, 'AIEnhancedRescheduleModal');
+
+    if (!validation.isValid) {
+      console.error('❌ RESCHEDULE: Date validation failed:', validation.error);
+      alert(`Fecha inválida: ${validation.error}`);
+
+      // Log validation failure
+      DataIntegrityValidator.logDataTransformation(
+        'AIEnhancedRescheduleModal',
+        'DATE_VALIDATION_FAILED',
+        { originalDate: date },
+        { error: validation.error },
+        ['ImmutableDateSystem.validateAndNormalize']
+      );
+      return;
     }
-  }, [formData.newDate, organizationId]);
+
+    // STEP 2: Check for date displacement
+    if (validation.displacement?.detected) {
+      console.error('🚨 RESCHEDULE: DATE DISPLACEMENT DETECTED!', {
+        originalDate: date,
+        normalizedDate: validation.normalizedDate,
+        daysDifference: validation.displacement.daysDifference
+      });
+
+      // Log displacement event
+      DataIntegrityValidator.logDataTransformation(
+        'AIEnhancedRescheduleModal',
+        'DATE_DISPLACEMENT_DETECTED',
+        { originalDate: date },
+        {
+          normalizedDate: validation.normalizedDate,
+          daysDifference: validation.displacement.daysDifference
+        },
+        ['ImmutableDateSystem.validateAndNormalize']
+      );
+
+      alert(`Advertencia: Se detectó un desplazamiento de fecha. Usando fecha corregida: ${validation.normalizedDate}`);
+    }
+
+    const validatedDate = validation.normalizedDate || date;
+    console.log('✅ RESCHEDULE: Using validated date:', validatedDate);
+
+    // STEP 3: Business rule validation
+    if (ImmutableDateSystem.isPastDate(validatedDate)) {
+      console.log('🚫 RESCHEDULE: Past date blocked');
+      alert('No se pueden agendar citas en fechas pasadas');
+      return;
+    }
+
+    // STEP 4: Role-based validation (24-hour advance booking rule)
+    const isToday = ImmutableDateSystem.isToday(validatedDate);
+    const isPrivilegedUser = ['admin', 'staff', 'doctor', 'superadmin'].includes(userRole);
+    const applyStandardRules = !isPrivilegedUser || useStandardRules;
+
+    if (isToday && applyStandardRules) {
+      console.log('🚫 RESCHEDULE: Same-day booking blocked for standard users');
+      alert('Los pacientes deben reservar citas con al menos 24 horas de anticipación');
+      return;
+    }
+
+    console.log('✅ RESCHEDULE: All validations passed, updating form data');
+
+    // STEP 5: Update form data with validated date
+    setFormData(prev => {
+      const newFormData = {
+        ...prev,
+        newDate: validatedDate,
+        newTime: time || prev.newTime
+      };
+
+      console.log('📊 RESCHEDULE: Form data updated:', {
+        previousDate: prev.newDate,
+        newDate: validatedDate,
+        displacement: prev.newDate !== validatedDate
+      });
+
+      return newFormData;
+    });
+
+    // CRITICAL FIX: Don't clear optimistic date immediately - let it persist for title display
+    // This ensures the title shows the correct date while form data updates
+    console.log('✅ RESCHEDULE: Keeping optimistic date for title display consistency');
+
+    // STEP 6: Load time slots only for valid, unblocked dates
+    if (validatedDate && validatedDate !== formData.newDate) {
+      console.log('✅ RESCHEDULE: Loading time slots for validated date:', validatedDate);
+      loadTimeSlots(validatedDate);
+    } else {
+      console.log('🔍 RESCHEDULE: Skipping time slot loading (same date or invalid)');
+    }
+
+    // STEP 7: Track successful date selection
+    console.log('🎯 RESCHEDULE: Date selection completed successfully:', {
+      originalInput: date,
+      validatedDate: validatedDate,
+      timeSlotLoading: validatedDate !== formData.newDate,
+      formDataUpdated: true
+    });
+
+  }, [formData.newDate, organizationId, userRole, useStandardRules, loadTimeSlots]);
 
   /**
    * Maneja la selección de slot de tiempo
@@ -391,10 +530,13 @@ const AIEnhancedRescheduleModal: React.FC<AIEnhancedRescheduleModalProps> = ({
   };
 
   /**
-   * Alterna entre modo AI y modo manual
+   * CRITICAL FIX: Disable mode toggle to ensure consistent availability display
+   * Always keep AI mode active to use WeeklyAvailabilitySelector with fixed logic
    */
   const toggleAIMode = () => {
-    setShowAIMode(!showAIMode);
+    // Disabled: Always keep AI mode to ensure consistency
+    console.log('Mode toggle disabled - keeping AI mode for consistency');
+    // setShowAIMode(!showAIMode);
   };
 
   /**
@@ -432,6 +574,10 @@ const AIEnhancedRescheduleModal: React.FC<AIEnhancedRescheduleModalProps> = ({
 
   if (!isOpen || !appointment) return null;
 
+  // CRITICAL DEBUG: Confirm we're always using WeeklyAvailabilitySelector
+  console.log('🔧 RESCHEDULE MODAL: Always using WeeklyAvailabilitySelector for consistency');
+  console.log('📊 RESCHEDULE MODAL: showAIMode =', showAIMode, '(should always be true)');
+
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
       {/* Backdrop */}
@@ -463,19 +609,12 @@ const AIEnhancedRescheduleModal: React.FC<AIEnhancedRescheduleModalProps> = ({
             </div>
             
             <div className="flex items-center space-x-3">
-              {/* AI Mode Toggle */}
-              <button
-                type="button"
-                onClick={toggleAIMode}
-                className={`flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                  showAIMode 
-                    ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white' 
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                {showAIMode ? <Brain className="w-4 h-4 mr-1" /> : <Calendar className="w-4 h-4 mr-1" />}
-                {showAIMode ? 'Modo IA' : 'Modo Manual'}
-              </button>
+              {/* CRITICAL FIX: Hide toggle button to prevent inconsistent availability display */}
+              {/* Always show AI mode indicator */}
+              <div className="flex items-center px-3 py-2 text-sm font-medium rounded-md bg-gradient-to-r from-blue-500 to-purple-600 text-white">
+                <Brain className="w-4 h-4 mr-1" />
+                Modo IA Activo
+              </div>
               
               <button
                 type="button"
@@ -550,67 +689,48 @@ const AIEnhancedRescheduleModal: React.FC<AIEnhancedRescheduleModalProps> = ({
               </div>
             </div>
 
-            {/* AI-Enhanced Date Selection */}
+            {/* DISRUPTIVE CHANGE: Use EnhancedWeeklyAvailabilitySelector with new architecture */}
             <form onSubmit={handleSubmit} className="space-y-6">
-              {showAIMode && aiContext ? (
-                <WeeklyAvailabilitySelector
-                  title="¿Cuándo te gustaría reagendar?"
-                  subtitle="Sugerencias inteligentes basadas en tu cita original"
-                  selectedDate={formData.newDate}
-                  onDateSelect={handleDateSelect}
-                  organizationId={organizationId}
-                  serviceId={service?.id}
-                  doctorId={doctor?.id}
-                  locationId={location?.id}
-                  minDate={new Date().toISOString().split('T')[0]}
-                  showDensityIndicators={true}
-                  enableSmartSuggestions={true}
-                  aiContext={aiContext}
-                  entryMode="ai"
-                  compactSuggestions={true}
-                  className="border-2 border-blue-200 bg-gradient-to-br from-blue-50 to-purple-50"
-                />
-              ) : (
-                <div className="bg-white border border-gray-200 rounded-lg p-6">
-                  <h4 className="text-lg font-medium text-gray-900 mb-4">Selección Manual</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label htmlFor="newDate" className="block text-sm font-medium text-gray-700 mb-2">
-                        Nueva Fecha
-                      </label>
-                      <input
-                        type="date"
-                        id="newDate"
-                        value={formData.newDate}
-                        onChange={(e) => setFormData(prev => ({ ...prev, newDate: e.target.value }))}
-                        min={new Date().toISOString().split('T')[0]}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        disabled={isSubmitting}
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label htmlFor="newTime" className="block text-sm font-medium text-gray-700 mb-2">
-                        Nueva Hora
-                      </label>
-                      <input
-                        type="time"
-                        id="newTime"
-                        value={formData.newTime}
-                        onChange={(e) => setFormData(prev => ({ ...prev, newTime: e.target.value }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        disabled={isSubmitting}
-                        required
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
+              <EnhancedWeeklyAvailabilitySelector
+                title="¿Cuándo te gustaría reagendar?"
+                subtitle="Sugerencias inteligentes basadas en tu cita original"
+                selectedDate={(() => {
+                  const selectedDate = optimisticDate || formData.newDate;
+                  console.log('🔍 RESCHEDULE WEEKLY SELECTOR: selectedDate prop:', {
+                    optimisticDate,
+                    formDataDate: formData.newDate,
+                    selectedDate
+                  });
+                  return selectedDate;
+                })()}
+                onDateSelect={handleDateSelect}
+                organizationId={organizationId}
+                serviceId={service?.id}
+                doctorId={doctor?.id}
+                locationId={location?.id}
+                minDate={ImmutableDateSystem.getTodayString()}
+                showDensityIndicators={true}
+                enableSmartSuggestions={!!aiContext}
+                aiContext={aiContext || undefined}
+                entryMode="ai"
+                compactSuggestions={true}
+                className="border-2 border-blue-200 bg-gradient-to-br from-blue-50 to-purple-50"
+                userRole={userRole}
+                useStandardRules={useStandardRules}
+              />
 
               {/* Enhanced Time Slot Selection with Period Grouping */}
-              {formData.newDate && (
+              {(optimisticDate || formData.newDate) && (
                 <EnhancedTimeSlotSelector
-                  title={`Horarios disponibles para ${formData.newDate}`}
+                  title={`Horarios disponibles para ${(() => {
+                    const displayDate = optimisticDate || formData.newDate;
+                    console.log('🔍 RESCHEDULE TITLE GENERATION:', {
+                      optimisticDate,
+                      formDataDate: formData.newDate,
+                      displayDate
+                    });
+                    return displayDate;
+                  })()}`}
                   subtitle="Selecciona el horario que prefieras - organizados por franjas de tiempo"
                   slots={availableTimeSlots}
                   selectedSlot={selectedSlot}
@@ -623,8 +743,8 @@ const AIEnhancedRescheduleModal: React.FC<AIEnhancedRescheduleModalProps> = ({
                 />
               )}
 
-              {/* AI Context Display */}
-              {showAIMode && aiContext && (
+              {/* AI Context Display - Always show when available */}
+              {aiContext && (
                 <div className="bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-md p-4">
                   <div className="flex items-start">
                     <Brain className="h-5 w-5 text-blue-500 mr-2 flex-shrink-0 mt-0.5" />

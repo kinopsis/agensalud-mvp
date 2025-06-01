@@ -112,12 +112,19 @@ export default function Calendar({
     }
   }, [organization?.id, dateRange, selectedFilters]);
 
-  // Fetch available slots if needed
+  // FIXED: Fetch available slots for day view and when showAvailability is enabled
+  // This ensures availability is always fetched when needed
   useEffect(() => {
-    if (showAvailability && currentView === 'day') {
+    if (organization?.id && (showAvailability || currentView === 'day')) {
+      console.log('🔄 CALENDAR: Triggering availability fetch due to:', {
+        showAvailability,
+        currentView,
+        date: currentDate.toISOString().split('T')[0],
+        doctorFilter: selectedFilters.doctor || 'all'
+      });
       fetchAvailableSlots();
     }
-  }, [showAvailability, currentDate, currentView, selectedFilters.doctor]);
+  }, [organization?.id, showAvailability, currentDate, currentView, selectedFilters.doctor]);
 
   const fetchAppointments = async () => {
     try {
@@ -162,12 +169,17 @@ export default function Calendar({
   };
 
   const fetchAvailableSlots = async () => {
-    if (!selectedFilters.doctor) return;
+    // FIXED: Fetch availability for all doctors when no specific doctor is selected
+    // This enables the calendar to show general availability for the organization
 
     try {
       const params = new URLSearchParams();
       params.append('organizationId', organization!.id);
-      params.append('doctorId', selectedFilters.doctor);
+
+      // Only add doctorId if a specific doctor is selected
+      if (selectedFilters.doctor) {
+        params.append('doctorId', selectedFilters.doctor);
+      }
 
       const dateStr = currentDate.toISOString().split('T')[0];
       if (dateStr) {
@@ -175,15 +187,39 @@ export default function Calendar({
       }
       params.append('duration', '30');
 
+      // Apply role-based booking rules
+      const userRole = profile?.role as 'patient' | 'admin' | 'staff' | 'doctor' | 'superadmin';
+      const isPrivilegedUser = ['admin', 'staff', 'doctor', 'superadmin'].includes(userRole || 'patient');
+
+      if (!isPrivilegedUser) {
+        params.append('useStandardRules', 'true');
+      }
+
+      console.log('🔍 CALENDAR: Fetching availability with params:', {
+        organizationId: organization!.id,
+        doctorId: selectedFilters.doctor || 'all',
+        date: dateStr,
+        userRole,
+        useStandardRules: !isPrivilegedUser
+      });
+
       const response = await fetch(`/api/doctors/availability?${params}`);
       if (!response.ok) {
         throw new Error('Failed to fetch availability');
       }
 
       const data = await response.json();
-      setAvailableSlots(data.data?.map((slot: any) => slot.start_time) || []);
+      const slots = data.data?.map((slot: any) => slot.start_time) || [];
+
+      console.log('✅ CALENDAR: Availability fetched successfully:', {
+        slotsCount: slots.length,
+        date: dateStr,
+        doctorFilter: selectedFilters.doctor || 'all'
+      });
+
+      setAvailableSlots(slots);
     } catch (error) {
-      console.error('Error fetching availability:', error);
+      console.error('❌ CALENDAR: Error fetching availability:', error);
       setAvailableSlots([]);
     }
   };

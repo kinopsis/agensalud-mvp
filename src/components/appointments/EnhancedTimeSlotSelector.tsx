@@ -3,7 +3,7 @@
  * Time slot selection with period grouping and filtering
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Clock, User, Sun, Sunset, Moon } from 'lucide-react';
 import { AvailabilitySlot } from './shared/types';
 import LoadingState from './shared/LoadingState';
@@ -85,6 +85,115 @@ export default function EnhancedTimeSlotSelector({
   showPricing = true
 }: EnhancedTimeSlotSelectorProps) {
   const [selectedPeriod, setSelectedPeriod] = useState<TimePeriod>('all');
+
+  /**
+   * CRITICAL: Track time slot header display for correlation with clicked dates
+   */
+  useEffect(() => {
+    // Track when the time slot selector is rendered with a title
+    if (title && window.trackDateEvent) {
+      const displayTimestamp = new Date().toISOString();
+      const displayId = `display-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+      // Extract date from title if it contains "Horarios disponibles para [DATE]"
+      const dateMatch = title.match(/(\d{4}-\d{2}-\d{2})/);
+      const extractedDate = dateMatch ? dateMatch[1] : null;
+
+      console.log('🔍 TIME SLOT SELECTOR: Header displayed');
+      console.log('📋 Title:', title);
+      console.log('📊 Extracted date:', extractedDate);
+      console.log('🆔 Display ID:', displayId);
+
+      window.trackDateEvent('TIME_SLOT_HEADER_DISPLAYED', {
+        title,
+        extractedDate,
+        displayTimestamp,
+        displayId,
+        slotsCount: slots.length,
+        component: 'EnhancedTimeSlotSelector'
+      }, 'EnhancedTimeSlotSelector');
+
+      // Check correlation with last clicked date
+      if (window.lastClickedDate && extractedDate) {
+        const clickedDate = window.lastClickedDate.date;
+        const isCorrect = extractedDate === clickedDate;
+        const isDisplacement = extractedDate !== clickedDate;
+
+        console.log('🔍 TIME SLOT CORRELATION CHECK:');
+        console.log('  Clicked date:', clickedDate);
+        console.log('  Displayed date:', extractedDate);
+        console.log('  Is correct:', isCorrect);
+        console.log('  Is displacement:', isDisplacement);
+
+        if (window.trackDateEvent) {
+          window.trackDateEvent('TIME_SLOT_HEADER_CORRELATION', {
+            clickedDate,
+            displayedDate: extractedDate,
+            isCorrect,
+            isDisplacement,
+            title,
+            clickId: window.lastClickedDate.clickId,
+            displayId
+          }, 'EnhancedTimeSlotSelector');
+        }
+
+        if (isDisplacement) {
+          console.error('🚨 TIME SLOT HEADER DISPLACEMENT DETECTED!', {
+            clickedDate,
+            displayedDate: extractedDate,
+            title,
+            displacement: {
+              detected: true,
+              daysDifference: calculateDaysDifference(clickedDate, extractedDate)
+            }
+          });
+
+          // Track critical displacement event
+          if (window.trackDateEvent) {
+            window.trackDateEvent('TIME_SLOT_HEADER_DISPLACEMENT_CONFIRMED', {
+              clickedDate,
+              displayedDate: extractedDate,
+              title,
+              clickId: window.lastClickedDate.clickId,
+              displayId,
+              severity: 'CRITICAL'
+            }, 'EnhancedTimeSlotSelector');
+          }
+
+          // Alert user about displacement
+          if (window.advancedDateTracker?.config?.alertOnDisplacement) {
+            alert(`🚨 TIME SLOT HEADER DISPLACEMENT!\n\nClicked: ${clickedDate}\nHeader shows: ${extractedDate}\n\nTitle: "${title}"`);
+          }
+        } else if (isCorrect) {
+          console.log('✅ TIME SLOT HEADER CORRELATION CORRECT');
+
+          if (window.trackDateEvent) {
+            window.trackDateEvent('TIME_SLOT_HEADER_CORRELATION_CORRECT', {
+              clickedDate,
+              displayedDate: extractedDate,
+              title,
+              clickId: window.lastClickedDate.clickId,
+              displayId
+            }, 'EnhancedTimeSlotSelector');
+          }
+        }
+      }
+    }
+  }, [title, slots.length]);
+
+  /**
+   * Calculate difference in days between two dates
+   */
+  const calculateDaysDifference = (date1: string, date2: string): number => {
+    try {
+      const d1 = new Date(date1);
+      const d2 = new Date(date2);
+      const diffTime = Math.abs(d2.getTime() - d1.getTime());
+      return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    } catch (error) {
+      return 0;
+    }
+  };
 
   const formatTime = (timeString: string): string => {
     try {
