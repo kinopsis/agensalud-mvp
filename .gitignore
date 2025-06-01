@@ -128,3 +128,16 @@ temp/
 date-displacement-debug-*.json
 *-debug-*.json
 validation-report-*.json
+
+# Documentation
+docs/**/.DS_Store
+docs-archive/**/.DS_Store
+
+# Temporary documentation files
+docs/**/*.tmp
+docs/**/*.bak
+docs/**/*.swp
+
+# Generated documentation
+docs/generated/
+coverage/lcov-report/
