@@ -123,3 +123,8 @@ temp/
 # Backup files
 *.bak
 *.backup
+
+# Debug and validation files
+date-displacement-debug-*.json
+*-debug-*.json
+validation-report-*.json
