@@ -95,6 +95,12 @@ export async function GET(request: NextRequest) {
     const serviceId = searchParams.get('serviceId');
     const doctorId = searchParams.get('doctorId');
     const locationId = searchParams.get('locationId');
+
+    // MVP SIMPLIFIED: Role-based parameters
+    const userRole = searchParams.get('userRole') as 'patient' | 'admin' | 'staff' | 'doctor' | 'superadmin' || 'patient';
+    const useStandardRules = searchParams.get('useStandardRules') === 'true';
+
+    console.log(`🔐 AVAILABILITY API - User Role: ${userRole}, Use Standard Rules: ${useStandardRules}`);
     
     // Validar formato de fechas
     const startDateObj = new Date(startDate);
@@ -252,7 +258,10 @@ export async function GET(request: NextRequest) {
           availability.doctor,
           availability.doctor_id,
           serviceId,
-          locationId
+          locationId,
+          dateString,
+          userRole,
+          useStandardRules
         );
 
         if (processedData[dateString]) {
@@ -278,7 +287,8 @@ export async function GET(request: NextRequest) {
 }
 
 /**
- * Generar slots de tiempo para un rango horario
+ * Generar slots de tiempo para un rango horario con validación basada en roles
+ * MVP SIMPLIFIED: Aplica reglas de 24h para pacientes, tiempo real para admin/staff
  */
 function generateTimeSlots(
   startTime: string,
@@ -287,7 +297,10 @@ function generateTimeSlots(
   doctor: any,
   doctorId: string,
   serviceId?: string | null,
-  locationId?: string | null
+  locationId?: string | null,
+  dateString?: string,
+  userRole: string = 'patient',
+  useStandardRules: boolean = false
 ): TimeSlot[] {
   const slots: TimeSlot[] = [];
 
@@ -310,6 +323,13 @@ function generateTimeSlots(
       return slots;
     }
 
+    // MVP SIMPLIFIED: Role-based availability logic
+    const isPrivilegedUser = ['admin', 'staff', 'doctor', 'superadmin'].includes(userRole);
+    const applyPrivilegedRules = isPrivilegedUser && !useStandardRules;
+    const now = new Date();
+    const today = now.toISOString().split('T')[0];
+    const isToday = dateString === today;
+
     // Generar slots
     for (let minutes = startMinutes; minutes < endMinutes; minutes += slotDuration) {
       const hour = Math.floor(minutes / 60);
@@ -323,15 +343,35 @@ function generateTimeSlots(
         ? `Dr. ${doctor.profiles[0].first_name} ${doctor.profiles[0].last_name}`
         : 'Doctor';
 
+      // Determinar disponibilidad basada en rol
+      let available = true;
+      let reason: string | undefined;
+
+      if (!applyPrivilegedRules && isToday) {
+        // STANDARD USERS (PATIENTS): No pueden reservar el mismo día
+        available = false;
+        reason = 'Los pacientes deben reservar citas con al menos 24 horas de anticipación';
+      } else if (applyPrivilegedRules && isToday) {
+        // PRIVILEGED USERS: Pueden reservar el mismo día, pero solo horarios futuros
+        const currentTime = now.getHours() * 60 + now.getMinutes();
+        const slotTime = hour * 60 + minute;
+
+        if (slotTime <= currentTime) {
+          available = false;
+          reason = 'Horario ya pasado';
+        }
+      }
+
       slots.push({
         id: `${doctorId}-${timeString}`,
         time: timeString,
         doctorId,
         doctorName,
-        available: true, // Por ahora todos disponibles, se puede mejorar con lógica de citas existentes
+        available,
         duration: slotDuration,
         serviceId: serviceId || undefined,
-        locationId: locationId || undefined
+        locationId: locationId || undefined,
+        reason
       });
     }
   } catch (error) {

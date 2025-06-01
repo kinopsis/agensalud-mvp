@@ -8,14 +8,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { z } from 'zod';
+import { ImmutableDateSystem } from '@/lib/core/ImmutableDateSystem';
 
 // Validation schema for availability query
 const availabilityQuerySchema = z.object({
   organizationId: z.string().uuid(),
   serviceId: z.string().uuid().optional(),
-  doctorId: z.string().uuid().optional(),
+  doctorId: z.string().uuid().optional(), // FIXED: Made optional to support all doctors
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), // YYYY-MM-DD format
   duration: z.string().transform(Number).pipe(z.number().min(15).max(240)).default('30'), // minutes
+  useStandardRules: z.string().optional().transform(val => val === 'true'), // Role-based booking rules
 });
 
 interface TimeSlot {
@@ -41,6 +43,7 @@ export async function GET(request: NextRequest) {
       doctorId: searchParams.get('doctorId') || undefined,
       date: searchParams.get('date'),
       duration: searchParams.get('duration') || '30',
+      useStandardRules: searchParams.get('useStandardRules') || undefined,
     };
 
     const validationResult = availabilityQuerySchema.safeParse(queryParams);
@@ -59,7 +62,16 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const { organizationId, serviceId, doctorId, date, duration } = validationResult.data;
+    const { organizationId, serviceId, doctorId, date, duration, useStandardRules } = validationResult.data;
+
+    console.log('🔍 AVAILABILITY API: Processing request:', {
+      organizationId,
+      serviceId: serviceId || 'all',
+      doctorId: doctorId || 'all',
+      date,
+      duration,
+      useStandardRules
+    });
 
     // Parse date and get day of week
     const targetDate = new Date(date);
@@ -296,14 +308,53 @@ export async function GET(request: NextRequest) {
     }
 
     // Sort slots by time and filter only available ones
-    const sortedAvailableSlots = availableSlots
+    let sortedAvailableSlots = availableSlots
       .filter(slot => slot.available)
       .sort((a, b) => a.start_time.localeCompare(b.start_time));
 
+    // FIXED: Apply role-based booking rules (24-hour advance booking for patients)
+    if (useStandardRules) {
+      // Use ImmutableDateSystem for consistent timezone-safe date comparison
+      const isToday = ImmutableDateSystem.isToday(date);
+
+      console.log('🔐 AVAILABILITY API: Role-based validation', {
+        date,
+        isToday,
+        useStandardRules,
+        originalSlots: sortedAvailableSlots.length
+      });
+
+      if (isToday) {
+        // For patients: Block all same-day appointments (24-hour advance booking rule)
+        sortedAvailableSlots = sortedAvailableSlots.map(slot => ({
+          ...slot,
+          available: false,
+          reason: 'Los pacientes deben reservar citas con al menos 24 horas de anticipación'
+        }));
+
+        console.log('🚫 AVAILABILITY API: Applied 24-hour advance booking rule for patient', {
+          date,
+          originalSlots: availableSlots.length,
+          filteredSlots: 0,
+          isToday: true
+        });
+      }
+    }
+
+    // Filter only available slots after applying rules
+    const finalAvailableSlots = sortedAvailableSlots.filter(slot => slot.available);
+
+    console.log('✅ AVAILABILITY API: Returning slots:', {
+      totalGenerated: availableSlots.length,
+      afterFiltering: finalAvailableSlots.length,
+      date,
+      useStandardRules
+    });
+
     return NextResponse.json({
       success: true,
-      data: sortedAvailableSlots,
-      count: sortedAvailableSlots.length,
+      data: finalAvailableSlots,
+      count: finalAvailableSlots.length,
       date: date,
       day_of_week: dayOfWeek,
       duration_minutes: duration

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { AppointmentProcessor } from '@/lib/ai/appointment-processor';
 import { validateDate, validateTime } from '@/lib/ai/entity-extraction';
+import { ImmutableDateSystem } from '@/lib/core/ImmutableDateSystem';
 
 /**
  * GET /api/appointments
@@ -154,6 +155,12 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
+
+    // MVP SIMPLIFIED: Apply role-based booking validation
+    const userRole = profile.role as 'patient' | 'admin' | 'staff' | 'doctor' | 'superadmin';
+    const isPrivilegedUser = ['admin', 'staff', 'doctor', 'superadmin'].includes(userRole);
+
+    console.log(`🔐 APPOINTMENT CREATION - User: ${userRole}, Privileged: ${isPrivilegedUser}`);
 
     // Check if this is an AI processing request (has message field)
     if (body.message && typeof body.message === 'string') {
@@ -347,6 +354,33 @@ async function handleManualBookingRequest(body: any, profile: any) {
         { status: 400 }
       );
     }
+
+    // MVP SIMPLIFIED: Apply role-based booking validation
+    const userRole = profile.role as 'patient' | 'admin' | 'staff' | 'doctor' | 'superadmin';
+    const isPrivilegedUser = ['admin', 'staff', 'doctor', 'superadmin'].includes(userRole);
+
+    console.log(`🔐 MANUAL BOOKING VALIDATION - User: ${userRole}, Privileged: ${isPrivilegedUser}, Date: ${appointmentDate}, Time: ${startTime}`);
+
+    // Validate booking rules based on user role using ImmutableDateSystem
+    if (!isPrivilegedUser) {
+      // Standard users (patients): 24-hour advance booking rule
+      // Use ImmutableDateSystem for consistent timezone-safe validation
+      const isToday = ImmutableDateSystem.isToday(appointmentDate);
+
+      console.log(`🔒 PATIENT VALIDATION - Date: ${appointmentDate}, IsToday: ${isToday}, UserRole: ${userRole}`);
+
+      if (isToday) {
+        return NextResponse.json({
+          error: 'Los pacientes deben reservar citas con al menos 24 horas de anticipación',
+          code: 'ADVANCE_BOOKING_REQUIRED',
+          requiredAdvanceHours: 24,
+          userRole,
+          appointmentDate,
+          isToday: true
+        }, { status: 400 });
+      }
+    }
+    // Privileged users can book same-day appointments without restrictions
 
     // Calculate end_time if not provided
     let calculatedEndTime = endTime;
