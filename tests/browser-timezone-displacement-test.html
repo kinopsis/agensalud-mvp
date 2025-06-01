@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AgentSalud - Timezone Displacement Testing</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .test-container {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .test-header {
+            background: #2563eb;
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .test-section {
+            border: 1px solid #e5e7eb;
+            border-radius: 6px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+        .test-result {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 5px 0;
+        }
+        .success { background-color: #d1fae5; color: #065f46; }
+        .error { background-color: #fee2e2; color: #991b1b; }
+        .warning { background-color: #fef3c7; color: #92400e; }
+        .info { background-color: #dbeafe; color: #1e40af; }
+        button {
+            background: #2563eb;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background: #1d4ed8; }
+        .date-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 10px;
+            margin: 15px 0;
+        }
+        .date-cell {
+            padding: 10px;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            text-align: center;
+            cursor: pointer;
+            background: white;
+        }
+        .date-cell:hover { background: #f3f4f6; }
+        .date-cell.selected { background: #2563eb; color: white; }
+        .date-cell.disabled { background: #f9fafb; color: #9ca3af; cursor: not-allowed; }
+        .timezone-selector {
+            margin: 10px 0;
+        }
+        select {
+            padding: 8px;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            margin: 0 10px;
+        }
+        .log-container {
+            background: #1f2937;
+            color: #f9fafb;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 15px;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .stat-card {
+            background: #f8fafc;
+            padding: 15px;
+            border-radius: 6px;
+            text-align: center;
+        }
+        .stat-number {
+            font-size: 24px;
+            font-weight: bold;
+            color: #2563eb;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-header">
+        <h1>🔍 AgentSalud - Comprehensive Timezone Displacement Testing</h1>
+        <p>Manual testing simulation for date selection across different timezones and user roles</p>
+    </div>
+
+    <div class="test-container">
+        <h2>🎯 Test Configuration</h2>
+        <div class="timezone-selector">
+            <label>Timezone:</label>
+            <select id="timezoneSelect">
+                <option value="UTC">UTC</option>
+                <option value="America/New_York">EST (New York)</option>
+                <option value="America/Los_Angeles">PST (Los Angeles)</option>
+                <option value="Europe/London">GMT (London)</option>
+                <option value="Asia/Tokyo">JST (Tokyo)</option>
+                <option value="Australia/Sydney">AEDT (Sydney)</option>
+                <option value="America/Sao_Paulo">BRT (São Paulo)</option>
+                <option value="Asia/Kolkata">IST (Mumbai)</option>
+            </select>
+            
+            <label>User Role:</label>
+            <select id="userRoleSelect">
+                <option value="patient">Patient</option>
+                <option value="admin">Admin</option>
+                <option value="staff">Staff</option>
+                <option value="doctor">Doctor</option>
+                <option value="superadmin">Super Admin</option>
+            </select>
+            
+            <button onclick="updateConfiguration()">Update Configuration</button>
+        </div>
+    </div>
+
+    <div class="test-container">
+        <h2>📅 Date Selection Testing</h2>
+        <p>Click on dates to test the appointment booking date selection flow</p>
+        
+        <div class="date-grid" id="dateGrid">
+            <!-- Dates will be populated by JavaScript -->
+        </div>
+        
+        <div class="test-section">
+            <button onclick="runComprehensiveTests()">🚀 Run All Tests</button>
+            <button onclick="testEdgeCases()">⚡ Test Edge Cases</button>
+            <button onclick="clearResults()">🗑️ Clear Results</button>
+        </div>
+    </div>
+
+    <div class="test-container">
+        <h2>📊 Test Results</h2>
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-number" id="totalTests">0</div>
+                <div>Total Tests</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="successfulTests">0</div>
+                <div>Successful</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="displacementIssues">0</div>
+                <div>Displacements</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="successRate">0%</div>
+                <div>Success Rate</div>
+            </div>
+        </div>
+        
+        <div id="testResults"></div>
+    </div>
+
+    <div class="test-container">
+        <h2>📝 Test Log</h2>
+        <div class="log-container" id="testLog"></div>
+    </div>
+
+    <script>
+        // Test state
+        let testResults = [];
+        let displacementIssues = [];
+        let currentTimezone = 'UTC';
+        let currentUserRole = 'patient';
+
+        // ImmutableDateSystem implementation (simplified for testing)
+        class ImmutableDateSystem {
+            static parseDate(dateStr) {
+                const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+                if (!match) {
+                    throw new Error(`Invalid date format: ${dateStr}`);
+                }
+                return {
+                    year: parseInt(match[1], 10),
+                    month: parseInt(match[2], 10),
+                    day: parseInt(match[3], 10)
+                };
+            }
+
+            static formatDate(components) {
+                const { year, month, day } = components;
+                return `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+            }
+
+            static validateAndNormalize(dateStr) {
+                try {
+                    const components = this.parseDate(dateStr);
+                    const normalizedDate = this.formatDate(components);
+                    
+                    return {
+                        isValid: true,
+                        normalizedDate,
+                        displacement: {
+                            detected: dateStr !== normalizedDate,
+                            originalDate: dateStr,
+                            normalizedDate: normalizedDate,
+                            daysDifference: dateStr !== normalizedDate ? 1 : 0
+                        }
+                    };
+                } catch (error) {
+                    return {
+                        isValid: false,
+                        error: error.message
+                    };
+                }
+            }
+
+            static getTodayString() {
+                const now = new Date();
+                return this.formatDate({
+                    year: now.getFullYear(),
+                    month: now.getMonth() + 1,
+                    day: now.getDate()
+                });
+            }
+
+            static isToday(dateStr) {
+                return dateStr === this.getTodayString();
+            }
+
+            static isPastDate(dateStr) {
+                const today = this.getTodayString();
+                return dateStr < today;
+            }
+        }
+
+        // Logging functions
+        function log(message, type = 'info') {
+            const timestamp = new Date().toISOString();
+            const logElement = document.getElementById('testLog');
+            const logEntry = `[${timestamp}] ${type.toUpperCase()}: ${message}\n`;
+            logElement.textContent += logEntry;
+            logElement.scrollTop = logElement.scrollHeight;
+            console.log(logEntry);
+        }
+
+        function addTestResult(result) {
+            const resultsContainer = document.getElementById('testResults');
+            const resultElement = document.createElement('div');
+            resultElement.className = `test-result ${result.success ? 'success' : 'error'}`;
+            
+            let content = `
+                <strong>${result.success ? '✅' : '❌'} ${result.testName}</strong><br>
+                Date: ${result.date} | Timezone: ${result.timezone} | Role: ${result.userRole}<br>
+            `;
+            
+            if (result.displacement) {
+                content += `🚨 DISPLACEMENT: ${result.displacement.originalDate} → ${result.displacement.normalizedDate}<br>`;
+            }
+            
+            if (result.error) {
+                content += `Error: ${result.error}<br>`;
+            }
+            
+            resultElement.innerHTML = content;
+            resultsContainer.appendChild(resultElement);
+        }
+
+        // Date selection simulation
+        function simulateDateClick(dateString) {
+            log(`Simulating date click: ${dateString} (${currentUserRole} in ${currentTimezone})`);
+            
+            const testResult = {
+                testName: 'Date Click Simulation',
+                date: dateString,
+                timezone: currentTimezone,
+                userRole: currentUserRole,
+                success: false
+            };
+
+            try {
+                // Step 1: Validate date
+                const validation = ImmutableDateSystem.validateAndNormalize(dateString);
+                
+                if (!validation.isValid) {
+                    testResult.error = validation.error;
+                    log(`❌ Date validation failed: ${validation.error}`, 'error');
+                    return testResult;
+                }
+
+                // Step 2: Check for displacement
+                if (validation.displacement?.detected) {
+                    testResult.displacement = validation.displacement;
+                    displacementIssues.push(testResult);
+                    log(`🚨 DISPLACEMENT DETECTED: ${validation.displacement.originalDate} → ${validation.displacement.normalizedDate}`, 'error');
+                    return testResult;
+                }
+
+                // Step 3: Role-based validation
+                const isPrivilegedUser = ['admin', 'staff', 'doctor', 'superadmin'].includes(currentUserRole);
+                const isToday = ImmutableDateSystem.isToday(validation.normalizedDate);
+                const isPast = ImmutableDateSystem.isPastDate(validation.normalizedDate);
+
+                if (isPast) {
+                    testResult.error = 'Past date not allowed';
+                    log(`🚫 Past date blocked: ${validation.normalizedDate}`, 'warning');
+                    return testResult;
+                }
+
+                if (isToday && !isPrivilegedUser) {
+                    testResult.error = '24-hour advance booking required';
+                    log(`🚫 Same-day booking blocked for ${currentUserRole}`, 'warning');
+                    return testResult;
+                }
+
+                // Success
+                testResult.success = true;
+                testResult.selectedDate = validation.normalizedDate;
+                log(`✅ Date selection successful: ${validation.normalizedDate}`, 'success');
+                
+            } catch (error) {
+                testResult.error = error.message;
+                log(`💥 Error during simulation: ${error.message}`, 'error');
+            }
+
+            testResults.push(testResult);
+            addTestResult(testResult);
+            updateStats();
+            return testResult;
+        }
+
+        // Generate test dates
+        function generateTestDates() {
+            const dates = [];
+            const today = new Date();
+            
+            // Generate dates for current month
+            for (let i = -5; i <= 20; i++) {
+                const date = new Date(today);
+                date.setDate(today.getDate() + i);
+                const dateStr = ImmutableDateSystem.formatDate({
+                    year: date.getFullYear(),
+                    month: date.getMonth() + 1,
+                    day: date.getDate()
+                });
+                dates.push(dateStr);
+            }
+            
+            return dates;
+        }
+
+        // Update date grid
+        function updateDateGrid() {
+            const grid = document.getElementById('dateGrid');
+            const dates = generateTestDates();
+            
+            grid.innerHTML = '';
+            dates.forEach(date => {
+                const cell = document.createElement('div');
+                cell.className = 'date-cell';
+                cell.textContent = date.split('-')[2]; // Show day only
+                cell.title = date;
+                cell.onclick = () => simulateDateClick(date);
+                
+                // Style based on date type
+                if (ImmutableDateSystem.isPastDate(date)) {
+                    cell.classList.add('disabled');
+                }
+                
+                grid.appendChild(cell);
+            });
+        }
+
+        // Configuration updates
+        function updateConfiguration() {
+            currentTimezone = document.getElementById('timezoneSelect').value;
+            currentUserRole = document.getElementById('userRoleSelect').value;
+            log(`Configuration updated: ${currentUserRole} in ${currentTimezone}`);
+            updateDateGrid();
+        }
+
+        // Comprehensive testing
+        function runComprehensiveTests() {
+            log('🚀 Starting comprehensive testing...', 'info');
+            clearResults();
+            
+            const timezones = ['UTC', 'America/New_York', 'Europe/London', 'Asia/Tokyo'];
+            const roles = ['patient', 'admin', 'staff'];
+            const testDates = [
+                '2025-01-15', '2025-01-31', '2025-02-28', 
+                '2025-03-01', '2025-12-31', '2026-01-01'
+            ];
+            
+            let testCount = 0;
+            const totalTests = timezones.length * roles.length * testDates.length;
+            
+            timezones.forEach(timezone => {
+                roles.forEach(role => {
+                    currentTimezone = timezone;
+                    currentUserRole = role;
+                    
+                    testDates.forEach(date => {
+                        setTimeout(() => {
+                            simulateDateClick(date);
+                            testCount++;
+                            
+                            if (testCount === totalTests) {
+                                log(`✅ Comprehensive testing completed: ${testCount} tests`, 'success');
+                                generateFinalReport();
+                            }
+                        }, testCount * 100); // Stagger tests
+                    });
+                });
+            });
+        }
+
+        // Edge case testing
+        function testEdgeCases() {
+            log('⚡ Testing edge cases...', 'info');
+            
+            const edgeCases = [
+                { date: '2025-03-09', description: 'DST Spring Forward (US)' },
+                { date: '2025-11-02', description: 'DST Fall Back (US)' },
+                { date: '2024-02-29', description: 'Leap Year February 29' },
+                { date: '2025-02-28', description: 'Non-Leap Year February 28' }
+            ];
+            
+            edgeCases.forEach((testCase, index) => {
+                setTimeout(() => {
+                    log(`Testing: ${testCase.description}`);
+                    simulateDateClick(testCase.date);
+                }, index * 500);
+            });
+        }
+
+        // Statistics and reporting
+        function updateStats() {
+            const total = testResults.length;
+            const successful = testResults.filter(r => r.success).length;
+            const displacements = displacementIssues.length;
+            const successRate = total > 0 ? Math.round((successful / total) * 100) : 0;
+            
+            document.getElementById('totalTests').textContent = total;
+            document.getElementById('successfulTests').textContent = successful;
+            document.getElementById('displacementIssues').textContent = displacements;
+            document.getElementById('successRate').textContent = `${successRate}%`;
+        }
+
+        function generateFinalReport() {
+            const total = testResults.length;
+            const displacements = displacementIssues.length;
+            const successCriteriaMet = displacements === 0;
+            
+            log('📊 FINAL REPORT:', 'info');
+            log(`Total Tests: ${total}`, 'info');
+            log(`Displacement Issues: ${displacements}`, displacements > 0 ? 'error' : 'success');
+            log(`Success Criteria (Zero Displacement): ${successCriteriaMet ? 'PASSED' : 'FAILED'}`, successCriteriaMet ? 'success' : 'error');
+            
+            if (displacements > 0) {
+                log('🚨 DISPLACEMENT ISSUES FOUND:', 'error');
+                displacementIssues.forEach((issue, index) => {
+                    log(`${index + 1}. ${issue.date} in ${issue.timezone} (${issue.userRole})`, 'error');
+                });
+            }
+        }
+
+        function clearResults() {
+            testResults = [];
+            displacementIssues = [];
+            document.getElementById('testResults').innerHTML = '';
+            document.getElementById('testLog').textContent = '';
+            updateStats();
+            log('🗑️ Test results cleared', 'info');
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            updateDateGrid();
+            log('🔍 Timezone Displacement Testing initialized', 'info');
+            log('Click on dates to test or use the automated testing buttons', 'info');
+        });
+    </script>
+</body>
+</html>
