@@ -10,6 +10,7 @@
 
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import '@testing-library/jest-dom';
 import CancelAppointmentModal, { CANCELLATION_REASONS } from '@/components/appointments/CancelAppointmentModal';
 import { AppointmentData } from '@/components/appointments/AppointmentCard';
