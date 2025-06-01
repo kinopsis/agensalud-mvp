@@ -157,10 +157,18 @@ npm start
 
 ## 📖 Documentation
 
-- [API Documentation](docs/api/)
-- [Database Schema](docs/database/)
-- [Troubleshooting Guide](docs/troubleshooting/)
-- [Development Guidelines](TASK.md)
+### 📚 Complete Documentation Suite
+- **[Documentation Hub](docs/README.md)** - Central documentation portal
+- **[Development Guidelines](docs/DEVELOPMENT.md)** - Development workflow and standards
+- **[Technical Architecture](docs/ARCHITECTURE.md)** - System design and product requirements
+- **[Changelog](docs/CHANGELOG.md)** - Version history and implementation details
+
+### 🔧 Technical Documentation
+- **[API Documentation](docs/api/README.md)** - Complete API reference and guides
+- **[Database Documentation](docs/database/README.md)** - Schema, migrations, and RLS policies
+- **[Testing Documentation](docs/testing/README.md)** - Comprehensive testing strategy
+- **[AI Features](docs/ai/README.md)** - Natural language processing and chatbot
+- **[Deployment Guide](docs/deployment/README.md)** - Production deployment procedures
 
 ## 🤝 Contributing
 
