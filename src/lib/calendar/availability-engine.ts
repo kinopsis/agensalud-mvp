@@ -1,10 +1,15 @@
 /**
- * Availability Engine
- * Calculates available time slots for appointment booking
- * Handles doctor schedules, existing appointments, and availability blocks
+ * Enhanced Availability Engine
+ * Calculates available time slots for appointment booking with tenant configuration support
+ * Handles doctor schedules, existing appointments, availability blocks, and configurable booking rules
+ *
+ * MIGRATION: Now uses ImmutableDateSystem for timezone-safe date handling
+ * @version 2.0.0 - Displacement-Safe Architecture
  */
 
 import { createClient } from '@/lib/supabase/server';
+import BookingConfigService, { type BookingSettings } from '@/lib/services/BookingConfigService';
+import ImmutableDateSystem from '@/lib/core/ImmutableDateSystem';
 
 export interface TimeSlot {
   start_time: string;
@@ -21,6 +26,10 @@ export interface AvailabilityRequest {
   doctorId?: string; // Optional: specific doctor
   serviceId?: string; // Optional: specific service
   duration?: number; // Minutes, default 30
+  useConfigurableRules?: boolean; // Whether to apply tenant-specific booking rules
+  skipAdvanceBookingValidation?: boolean; // For admin/internal use
+  userRole?: 'patient' | 'admin' | 'staff' | 'doctor' | 'superadmin'; // MVP: Role-based validation
+  useStandardRules?: boolean; // Force standard rules even for privileged users
 }
 
 export interface DoctorSchedule {
@@ -52,15 +61,43 @@ export class AvailabilityEngine {
   }
 
   /**
-   * Calculate available time slots for a given date and criteria
+   * Calculate available time slots for a given date and criteria with role-based rules
+   * MVP SIMPLIFIED: Supports role-based booking validation
    */
   async calculateAvailability(request: AvailabilityRequest): Promise<TimeSlot[]> {
-    const { organizationId, date, doctorId, serviceId, duration = 30 } = request;
+    const {
+      organizationId,
+      date,
+      doctorId,
+      serviceId,
+      duration = 30,
+      useConfigurableRules = true,
+      skipAdvanceBookingValidation = false,
+      userRole = 'patient',
+      useStandardRules = false
+    } = request;
 
     try {
-      // Get day of week (0 = Sunday, 6 = Saturday)
-      const requestDate = new Date(date);
-      const dayOfWeek = requestDate.getDay();
+      // Get tenant booking settings if configurable rules are enabled
+      let bookingSettings: BookingSettings | null = null;
+      if (useConfigurableRules) {
+        const bookingService = BookingConfigService.getInstance();
+        bookingSettings = await bookingService.getBookingSettings(organizationId);
+      }
+
+      // MIGRATION: Use ImmutableDateSystem for timezone-safe day calculation
+      const dayOfWeek = this.getDayOfWeekSafe(date);
+
+      console.log(`🔧 AVAILABILITY ENGINE - Using ImmutableDateSystem for date: ${date}, dayOfWeek: ${dayOfWeek}`);
+
+      // Check weekend policy if configurable rules are enabled
+      if (useConfigurableRules && bookingSettings) {
+        const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+        if (isWeekend && !bookingSettings.weekend_booking_enabled) {
+          console.log(`Weekend booking disabled for organization ${organizationId}`);
+          return [];
+        }
+      }
 
       // Get doctor schedules for this day
       const schedules = await this.getDoctorSchedules(organizationId, dayOfWeek, doctorId);
@@ -85,10 +122,23 @@ export class AvailabilityEngine {
         allSlots.push(...doctorSlots);
       }
 
-      // Sort by time
-      allSlots.sort((a, b) => a.start_time.localeCompare(b.start_time));
+      // Apply role-based booking rules filtering (MVP SIMPLIFIED)
+      let filteredSlots = allSlots;
 
-      return allSlots;
+      if (useConfigurableRules && !skipAdvanceBookingValidation) {
+        if (userRole && ['patient', 'admin', 'staff', 'doctor', 'superadmin'].includes(userRole)) {
+          // Use role-based filtering
+          filteredSlots = await this.applyRoleBasedFilter(allSlots, date, organizationId, userRole, useStandardRules);
+        } else if (bookingSettings) {
+          // Fallback to legacy configurable rules
+          filteredSlots = this.applyBookingRulesFilter(allSlots, date, bookingSettings);
+        }
+      }
+
+      // Sort by time
+      filteredSlots.sort((a, b) => a.start_time.localeCompare(b.start_time));
+
+      return filteredSlots;
 
     } catch (error) {
       console.error('Error calculating availability:', error);
@@ -368,6 +418,134 @@ export class AvailabilityEngine {
   }
 
   /**
+   * Apply role-based booking rules to filter time slots (MVP SIMPLIFIED)
+   * MIGRATION: Now uses ImmutableDateSystem for timezone-safe date comparisons
+   */
+  private async applyRoleBasedFilter(
+    slots: TimeSlot[],
+    date: string,
+    organizationId: string,
+    userRole: string,
+    useStandardRules: boolean = false
+  ): Promise<TimeSlot[]> {
+    const isPrivilegedUser = ['admin', 'staff', 'doctor', 'superadmin'].includes(userRole);
+    const applyPrivilegedRules = isPrivilegedUser && !useStandardRules;
+    const today = ImmutableDateSystem.getTodayString();
+    const isToday = ImmutableDateSystem.isToday(date);
+
+    console.log(`🔐 ROLE-BASED FILTER - User: ${userRole}, Privileged: ${applyPrivilegedRules}, Date: ${date}, IsToday: ${isToday}`);
+
+    return slots.map(slot => {
+      // Skip if already unavailable
+      if (!slot.available) return slot;
+
+      // MIGRATION: Use ImmutableDateSystem for time comparisons
+      if (applyPrivilegedRules) {
+        // PRIVILEGED USERS: Can book same-day, just filter past times
+        if (isToday) {
+          const isPastTime = this.isTimeInPast(slot.start_time);
+          if (isPastTime) {
+            return {
+              ...slot,
+              available: false,
+              reason: 'Horario ya pasado'
+            };
+          }
+        }
+        // Future dates are always valid for privileged users
+        return slot;
+      } else {
+        // STANDARD USERS (PATIENTS): 24-hour advance booking rule
+        if (isToday) {
+          return {
+            ...slot,
+            available: false,
+            reason: 'Los pacientes deben reservar citas con al menos 24 horas de anticipación'
+          };
+        }
+        // Future dates are valid for standard users
+        return slot;
+      }
+    });
+  }
+
+  /**
+   * Apply configurable booking rules to filter time slots (legacy)
+   */
+  private applyBookingRulesFilter(
+    slots: TimeSlot[],
+    date: string,
+    settings: BookingSettings
+  ): TimeSlot[] {
+    const now = new Date();
+    const [year, month, day] = date.split('-').map(Number);
+
+    return slots.map(slot => {
+      // Skip if already unavailable
+      if (!slot.available) return slot;
+
+      // Parse slot time
+      const [hours, minutes] = slot.start_time.split(':').map(Number);
+      const slotDateTime = new Date(year, month - 1, day, hours, minutes);
+
+      // Check advance booking rule
+      const timeDifferenceMs = slotDateTime.getTime() - now.getTime();
+      const timeDifferenceMinutes = Math.floor(timeDifferenceMs / (1000 * 60));
+      const meetsAdvanceRule = timeDifferenceMinutes >= (settings.advance_booking_hours * 60);
+
+      // Check booking window
+      const withinBookingWindow = this.isWithinBookingWindow(slot.start_time, settings);
+
+      // Check same day booking policy
+      const isToday = date === now.toISOString().split('T')[0];
+      const sameDayAllowed = !isToday || settings.allow_same_day_booking;
+
+      // Apply all rules
+      if (!meetsAdvanceRule) {
+        return {
+          ...slot,
+          available: false,
+          reason: `Requiere mínimo ${settings.advance_booking_hours} horas de anticipación`
+        };
+      }
+
+      if (!withinBookingWindow) {
+        return {
+          ...slot,
+          available: false,
+          reason: `Fuera del horario de reservas (${settings.booking_window_start} - ${settings.booking_window_end})`
+        };
+      }
+
+      if (!sameDayAllowed) {
+        return {
+          ...slot,
+          available: false,
+          reason: 'Reservas el mismo día no están permitidas'
+        };
+      }
+
+      return slot;
+    });
+  }
+
+  /**
+   * Check if time is within booking window
+   */
+  private isWithinBookingWindow(time: string, settings: BookingSettings): boolean {
+    const [hours, minutes] = time.split(':').map(Number);
+    const timeMinutes = hours * 60 + minutes;
+
+    const [startHours, startMins] = settings.booking_window_start.split(':').map(Number);
+    const startMinutes = startHours * 60 + startMins;
+
+    const [endHours, endMins] = settings.booking_window_end.split(':').map(Number);
+    const endMinutes = endHours * 60 + endMins;
+
+    return timeMinutes >= startMinutes && timeMinutes <= endMinutes;
+  }
+
+  /**
    * Get available slots for a specific doctor and date (simplified interface)
    */
   async getAvailableSlots(
@@ -386,5 +564,60 @@ export class AvailabilityEngine {
     return availability
       .filter(slot => slot.available && slot.doctor_id === doctorId)
       .map(slot => slot.start_time);
+  }
+
+  /**
+   * MIGRATION HELPER: Get day of week using ImmutableDateSystem (timezone-safe)
+   */
+  private getDayOfWeekSafe(dateStr: string): number {
+    try {
+      const components = ImmutableDateSystem.parseDate(dateStr);
+      // Create Date object ONLY for day calculation, not manipulation
+      const tempDate = new Date(components.year, components.month - 1, components.day);
+      return tempDate.getDay(); // 0 = Sunday, 6 = Saturday
+    } catch (error) {
+      console.error('Error calculating day of week:', error);
+      throw new Error(`Invalid date format: ${dateStr}`);
+    }
+  }
+
+  /**
+   * MIGRATION HELPER: Check if time is in the past (timezone-safe)
+   */
+  private isTimeInPast(timeStr: string): boolean {
+    try {
+      const now = new Date();
+      const [hours, minutes] = timeStr.split(':').map(Number);
+      const currentHours = now.getHours();
+      const currentMinutes = now.getMinutes();
+      const currentTimeMinutes = currentHours * 60 + currentMinutes;
+      const slotTimeMinutes = hours * 60 + minutes;
+
+      return slotTimeMinutes <= currentTimeMinutes;
+    } catch (error) {
+      console.error('Error checking if time is in past:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Get available slots with configurable rules (enhanced interface)
+   */
+  async getAvailableSlotsEnhanced(
+    organizationId: string,
+    doctorId: string,
+    date: string,
+    duration: number = 30,
+    useConfigurableRules: boolean = true
+  ): Promise<TimeSlot[]> {
+    const availability = await this.calculateAvailability({
+      organizationId,
+      doctorId,
+      date,
+      duration,
+      useConfigurableRules
+    });
+
+    return availability.filter(slot => slot.doctor_id === doctorId);
   }
 }

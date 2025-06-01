@@ -155,6 +155,14 @@ const cleanExpiredCache = (config: CacheConfig) => {
  * Llamada a la API para obtener disponibilidad
  */
 const fetchAvailabilityData = async (params: AvailabilityParams): Promise<DayAvailabilityData[]> => {
+  // TEMPORARILY DISABLED - Prevent infinite polling
+  console.log('🚫 useAvailabilityData: fetchAvailabilityData DISABLED to prevent infinite polling');
+  console.log('Params:', params);
+
+  // Return empty array to prevent errors
+  return [];
+
+  /* ORIGINAL CODE - TEMPORARILY DISABLED
   try {
     const queryParams = new URLSearchParams({
       organizationId: params.organizationId,

@@ -4,6 +4,10 @@ import { useAuth } from '@/contexts/auth-context'
 import { useTenant } from '@/contexts/tenant-context'
 import { useRouter } from 'next/navigation'
 import { useEffect } from 'react'
+import DateDisplacementDebugger from '@/components/debug/DateDisplacementDebugger'
+import DateValidationMonitor from '@/components/debug/DateValidationMonitor'
+import PerformanceMonitoringDashboard, { PerformanceIndicator } from '@/components/debug/PerformanceMonitoringDashboard'
+import { AppointmentDataProvider } from '@/contexts/AppointmentDataProvider'
 
 export default function DashboardLayout({
   children,
@@ -33,8 +37,25 @@ export default function DashboardLayout({
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {children}
-    </div>
+    <AppointmentDataProvider>
+      <div className="min-h-screen bg-gray-50">
+        {children}
+
+        {/* TEMPORARILY DISABLED - Debug components causing excessive API calls */}
+        {/*
+        <DateDisplacementDebugger
+          enabled={false}
+          autoStart={false}
+          showUI={false}
+        />
+        <DateValidationMonitor />
+        <PerformanceMonitoringDashboard
+          refreshInterval={30000}
+          showDetails={process.env.NODE_ENV === 'development'}
+        />
+        <PerformanceIndicator />
+        */}
+      </div>
+    </AppointmentDataProvider>
   )
 }
