@@ -14,14 +14,66 @@ import React, { useState, useEffect } from 'react';
 import { MessageSquare, Phone, Send, Plus, Settings, Activity, TrendingUp, RefreshCw, Filter } from 'lucide-react';
 import DashboardLayout from '@/components/dashboard/DashboardLayout';
 import StatsCard, { StatsGrid, StatsCardSkeleton } from '@/components/dashboard/StatsCard';
-import { ChannelInstanceCard } from './ChannelInstanceCard';
-import { ChannelConfigModal } from './ChannelConfigModal';
 import type {
   ChannelInstance,
   ChannelType,
   UnifiedChannelMetrics,
   ChannelStatus
 } from '@/types/channels';
+
+// Simplified import to prevent webpack module loading issues
+let ChannelInstanceCard: any = null;
+let ChannelConfigModal: any = null;
+
+// Simple fallback components
+const ChannelInstanceCardFallback = ({ instance }: { instance: ChannelInstance }) => (
+  <div className="bg-white rounded-lg shadow border border-gray-200 p-6">
+    <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center">
+        <div className="flex-shrink-0">
+          <MessageSquare className="h-8 w-8 text-gray-600" />
+        </div>
+        <div className="ml-3">
+          <h3 className="text-lg font-medium text-gray-900">{instance.instance_name}</h3>
+          <p className="text-sm text-gray-500">WhatsApp</p>
+        </div>
+      </div>
+      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+        {instance.status}
+      </span>
+    </div>
+    <div className="grid grid-cols-2 gap-4 mb-4 text-sm">
+      <div>
+        <span className="text-gray-500">Mensajes hoy:</span>
+        <span className="ml-2 font-medium">{instance.metrics?.messages_24h || 0}</span>
+      </div>
+      <div>
+        <span className="text-gray-500">Citas creadas:</span>
+        <span className="ml-2 font-medium">{instance.metrics?.appointments_24h || 0}</span>
+      </div>
+    </div>
+  </div>
+);
+
+const ChannelConfigModalFallback = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+        <h3 className="text-lg font-medium text-gray-900 mb-4">Configuración</h3>
+        <p className="text-gray-600 mb-4">Cargando configuración...</p>
+        <button
+          type="button"
+          onClick={onClose}
+          className="w-full bg-gray-100 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-200"
+        >
+          Cerrar
+        </button>
+      </div>
+    </div>
+  );
+};
 
 // =====================================================
 // TYPES AND INTERFACES
@@ -64,11 +116,33 @@ export const ChannelDashboard: React.FC<ChannelDashboardProps> = ({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [componentsLoaded, setComponentsLoaded] = useState(false);
 
   // Configuration modal state
   const [configModalOpen, setConfigModalOpen] = useState(false);
   const [selectedInstance, setSelectedInstance] = useState<ChannelInstance | null>(null);
   const [savingConfig, setSavingConfig] = useState(false);
+
+  // Load components dynamically
+  useEffect(() => {
+    const loadComponents = async () => {
+      try {
+        const [instanceCardModule, configModalModule] = await Promise.all([
+          import('./ChannelInstanceCard'),
+          import('./ChannelConfigModal')
+        ]);
+
+        ChannelInstanceCard = instanceCardModule.ChannelInstanceCard;
+        ChannelConfigModal = configModalModule.ChannelConfigModal;
+        setComponentsLoaded(true);
+      } catch (error) {
+        console.error('Failed to load channel components:', error);
+        // Keep components as null, will use fallbacks
+      }
+    };
+
+    loadComponents();
+  }, []);
 
   // =====================================================
   // DATA FETCHING
@@ -557,14 +631,26 @@ export const ChannelDashboard: React.FC<ChannelDashboardProps> = ({
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {activeTabData.instances.map((instance) => (
-              <ChannelInstanceCard
-                key={instance.id}
-                instance={instance}
-                onAction={handleInstanceCardAction}
-                loading={refreshing}
-              />
-            ))}
+            {activeTabData.instances.map((instance) => {
+              // Use enhanced component if loaded, otherwise use fallback
+              if (ChannelInstanceCard && componentsLoaded) {
+                return (
+                  <ChannelInstanceCard
+                    key={instance.id}
+                    instance={instance}
+                    onAction={handleInstanceCardAction}
+                    loading={refreshing}
+                  />
+                );
+              } else {
+                return (
+                  <ChannelInstanceCardFallback
+                    key={instance.id}
+                    instance={instance}
+                  />
+                );
+              }
+            })}
           </div>
         )}
       </div>
@@ -618,16 +704,26 @@ export const ChannelDashboard: React.FC<ChannelDashboardProps> = ({
       {renderInstanceList()}
 
       {/* Configuration Modal */}
-      <ChannelConfigModal
-        isOpen={configModalOpen}
-        onClose={() => {
-          setConfigModalOpen(false);
-          setSelectedInstance(null);
-        }}
-        instance={selectedInstance}
-        onSave={handleConfigSave}
-        saving={savingConfig}
-      />
+      {ChannelConfigModal && componentsLoaded ? (
+        <ChannelConfigModal
+          isOpen={configModalOpen}
+          onClose={() => {
+            setConfigModalOpen(false);
+            setSelectedInstance(null);
+          }}
+          instance={selectedInstance}
+          onSave={handleConfigSave}
+          saving={savingConfig}
+        />
+      ) : (
+        <ChannelConfigModalFallback
+          isOpen={configModalOpen}
+          onClose={() => {
+            setConfigModalOpen(false);
+            setSelectedInstance(null);
+          }}
+        />
+      )}
     </div>
   );
 };

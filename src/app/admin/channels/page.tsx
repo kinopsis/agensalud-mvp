@@ -13,8 +13,39 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/dashboard/DashboardLayout';
-import { ChannelDashboard } from '@/components/channels/ChannelDashboard';
 import { createClient } from '@/lib/supabase/client';
+
+// Simplified import to prevent webpack module loading issues
+let ChannelDashboard: any = null;
+
+// Simple fallback component
+const ChannelDashboardFallback = () => (
+  <div className="space-y-6">
+    <div className="border-b border-gray-200 pb-4">
+      <h1 className="text-2xl font-bold text-gray-900">Canales de Comunicación</h1>
+      <p className="mt-1 text-sm text-gray-500">
+        Gestiona todos tus canales de comunicación desde un solo lugar
+      </p>
+    </div>
+
+    <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+      {[1, 2, 3, 4].map((i) => (
+        <div key={i} className="bg-white rounded-lg shadow border border-gray-200 p-6">
+          <div className="animate-pulse">
+            <div className="h-8 w-8 bg-gray-300 rounded mb-4"></div>
+            <div className="h-4 bg-gray-300 rounded mb-2"></div>
+            <div className="h-6 bg-gray-300 rounded w-2/3"></div>
+          </div>
+        </div>
+      ))}
+    </div>
+
+    <div className="text-center py-12">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+      <p className="mt-2 text-gray-600">Cargando dashboard de canales...</p>
+    </div>
+  </div>
+);
 
 // =====================================================
 // TYPES
@@ -46,8 +77,25 @@ export default function ChannelsAdminPage() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [dashboardLoaded, setDashboardLoaded] = useState(false);
   const router = useRouter();
   const supabase = createClient();
+
+  // Load ChannelDashboard component dynamically
+  useEffect(() => {
+    const loadDashboard = async () => {
+      try {
+        const module = await import('@/components/channels/ChannelDashboard');
+        ChannelDashboard = module.ChannelDashboard;
+        setDashboardLoaded(true);
+      } catch (error) {
+        console.error('Failed to load ChannelDashboard:', error);
+        // Keep ChannelDashboard as null, will use fallback
+      }
+    };
+
+    loadDashboard();
+  }, []);
 
   // =====================================================
   // AUTHENTICATION & PROFILE
@@ -154,10 +202,14 @@ export default function ChannelsAdminPage() {
         </div>
 
         {/* Channel Dashboard */}
-        <ChannelDashboard
-          organizationId={profile.organization_id}
-          userRole={profile.role}
-        />
+        {ChannelDashboard && dashboardLoaded ? (
+          <ChannelDashboard
+            organizationId={profile.organization_id}
+            userRole={profile.role}
+          />
+        ) : (
+          <ChannelDashboardFallback />
+        )}
       </div>
     </DashboardLayout>
   );
