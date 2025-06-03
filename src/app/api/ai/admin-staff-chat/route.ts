@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { streamText } from 'ai';
-import { openai } from 'ai/openai';
+import { openai } from '@ai-sdk/openai';
 
 /**
  * Admin/Staff AI Chat API - FASE 2 MVP

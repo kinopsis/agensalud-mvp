@@ -25,50 +25,97 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
-  
+  const [isClient, setIsClient] = useState(false);
+
   const supabase = createClient();
 
+  // Prevent hydration mismatch by ensuring client-side rendering
   useEffect(() => {
-    // Get initial session
+    setIsClient(true);
+  }, []);
+
+  useEffect(() => {
+    // Only run on client side to prevent hydration mismatch
+    if (!isClient) return;
+
+    let isMounted = true;
+
+    // Get initial session with enhanced error handling
     const getInitialSession = async () => {
-      const { data: { session }, error } = await supabase.auth.getSession();
-      
-      if (error) {
-        console.error('Error getting session:', error);
-      } else {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+
+        if (!isMounted) return;
+
+        if (error) {
+          console.error('Error getting session:', error);
+          setLoading(false);
+          return;
+        }
+
         setSession(session);
         setUser(session?.user ?? null);
-        
+
         if (session?.user) {
           await fetchProfile(session.user.id);
         }
+      } catch (error) {
+        console.error('Error in getInitialSession:', error);
+        if (isMounted) {
+          setSession(null);
+          setUser(null);
+          setProfile(null);
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
       }
-      
-      setLoading(false);
     };
 
     getInitialSession();
 
-    // Listen for auth changes
+    // Listen for auth changes with enhanced error handling
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        
-        if (session?.user) {
-          await fetchProfile(session.user.id);
-        } else {
-          setProfile(null);
+        if (!isMounted) return;
+
+        console.log('🔐 Auth state change:', event, session?.user?.id);
+
+        try {
+          setSession(session);
+          setUser(session?.user ?? null);
+
+          if (session?.user) {
+            await fetchProfile(session.user.id);
+          } else {
+            setProfile(null);
+          }
+        } catch (error) {
+          console.error('Error in auth state change handler:', error);
+          if (isMounted) {
+            setProfile(null);
+          }
+        } finally {
+          if (isMounted) {
+            setLoading(false);
+          }
         }
-        
-        setLoading(false);
       }
     );
 
-    return () => subscription.unsubscribe();
-  }, []);
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
+  }, [isClient]);
 
   const fetchProfile = async (userId: string) => {
+    if (!userId) {
+      console.warn('fetchProfile called with empty userId');
+      return;
+    }
+
     try {
       const { data, error } = await supabase
         .from('profiles')
@@ -78,12 +125,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (error) {
         console.error('Error fetching profile:', error);
+        // Don't set profile to null on error, keep existing profile if any
         return;
       }
 
-      setProfile(data);
+      if (data) {
+        setProfile(data);
+        console.log('✅ Profile fetched successfully:', data.id, data.role);
+      }
     } catch (error) {
       console.error('Error fetching profile:', error);
+      // Don't clear profile on network errors
     }
   };
 

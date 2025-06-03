@@ -1,61 +1,82 @@
 'use client'
 
+/**
+ * Dashboard Layout Component
+ *
+ * Provides authentication-aware layout for dashboard pages with proper
+ * hydration safety and error boundary protection.
+ *
+ * @author AgentSalud Development Team
+ * @date 2025-01-28
+ */
+
 import { useAuth } from '@/contexts/auth-context'
 import { useTenant } from '@/contexts/tenant-context'
 import { useRouter } from 'next/navigation'
-import { useEffect } from 'react'
-import DateDisplacementDebugger from '@/components/debug/DateDisplacementDebugger'
-import DateValidationMonitor from '@/components/debug/DateValidationMonitor'
-import PerformanceMonitoringDashboard, { PerformanceIndicator } from '@/components/debug/PerformanceMonitoringDashboard'
+import { useEffect, useState, Suspense } from 'react'
 import { AppointmentDataProvider } from '@/contexts/AppointmentDataProvider'
+import { useIsClient } from '@/utils/hydration-safe'
+import { DashboardErrorBoundary } from '@/components/error-boundary/DashboardErrorBoundary'
 
+/**
+ * Loading component for dashboard
+ */
+function DashboardLoading() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+        <h2 className="mt-4 text-xl font-semibold text-gray-900">Cargando Dashboard...</h2>
+        <p className="text-gray-600">Verificando autenticación</p>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Dashboard Layout with hydration safety and error boundaries
+ */
 export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
-  const { user, loading } = useAuth()
-  const { organization } = useTenant()
+  const { user, loading: authLoading } = useAuth()
+  const { organization, loading: tenantLoading } = useTenant()
   const router = useRouter()
+  const isClient = useIsClient()
+  const [isNavigating, setIsNavigating] = useState(false)
 
+  // Prevent hydration mismatch by ensuring client-side rendering
   useEffect(() => {
-    if (!loading && !user) {
+    if (!isClient) return
+
+    // Handle authentication redirect with proper state management
+    if (!authLoading && !user && !isNavigating) {
+      setIsNavigating(true)
       router.push('/login')
     }
-  }, [user, loading, router])
+  }, [user, authLoading, router, isClient, isNavigating])
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
-      </div>
-    )
+  // Show loading state during SSR or while auth is loading
+  if (!isClient || authLoading || tenantLoading) {
+    return <DashboardLoading />
   }
 
-  if (!user) {
-    return null
+  // Show loading if navigating to login
+  if (isNavigating || !user) {
+    return <DashboardLoading />
   }
 
   return (
-    <AppointmentDataProvider>
-      <div className="min-h-screen bg-gray-50">
-        {children}
-
-        {/* TEMPORARILY DISABLED - Debug components causing excessive API calls */}
-        {/*
-        <DateDisplacementDebugger
-          enabled={false}
-          autoStart={false}
-          showUI={false}
-        />
-        <DateValidationMonitor />
-        <PerformanceMonitoringDashboard
-          refreshInterval={30000}
-          showDetails={process.env.NODE_ENV === 'development'}
-        />
-        <PerformanceIndicator />
-        */}
-      </div>
-    </AppointmentDataProvider>
+    <DashboardErrorBoundary>
+      <Suspense fallback={<DashboardLoading />}>
+        <AppointmentDataProvider>
+          <div className="min-h-screen bg-gray-50">
+            {children}
+          </div>
+        </AppointmentDataProvider>
+      </Suspense>
+    </DashboardErrorBoundary>
   )
 }

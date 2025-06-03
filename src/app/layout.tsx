@@ -4,6 +4,8 @@ import "./globals.css";
 import { AuthProvider } from "@/contexts/auth-context";
 import { TenantProvider } from "@/contexts/tenant-context";
 import { NotificationProvider } from "@/components/ui/NotificationSystem";
+import { GlobalErrorBoundary } from "@/components/common/GlobalErrorBoundary";
+import { WebpackModuleInitializer } from "@/components/common/WebpackModuleInitializer";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -21,13 +23,16 @@ export default function RootLayout({
   return (
     <html lang="es">
       <body className={inter.className}>
-        <NotificationProvider>
-          <AuthProvider>
-            <TenantProvider>
-              {children}
-            </TenantProvider>
-          </AuthProvider>
-        </NotificationProvider>
+        <WebpackModuleInitializer />
+        <GlobalErrorBoundary>
+          <NotificationProvider>
+            <AuthProvider>
+              <TenantProvider>
+                {children}
+              </TenantProvider>
+            </AuthProvider>
+          </NotificationProvider>
+        </GlobalErrorBoundary>
       </body>
     </html>
   );

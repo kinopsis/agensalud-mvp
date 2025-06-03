@@ -197,20 +197,20 @@ const fetchAvailabilityData = async (params: AvailabilityParams): Promise<DayAva
     tomorrow.setDate(today.getDate() + 1);
 
     const processedData: DayAvailabilityData[] = [];
-    
+
     // Generar datos para cada día en el rango
     const startDate = new Date(params.startDate);
     const endDate = new Date(params.endDate);
-    
+
     for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
       const dateString = date.toISOString().split('T')[0];
       const dayData = result.data[dateString];
-      
+
       const availableSlots = dayData?.availableSlots || 0;
       const isToday = date.toDateString() === today.toDateString();
       const isTomorrow = date.toDateString() === tomorrow.toDateString();
       const isWeekend = date.getDay() === 0 || date.getDay() === 6;
-      
+
       processedData.push({
         date: dateString,
         dayName: dayNames[date.getDay()],
@@ -228,6 +228,7 @@ const fetchAvailabilityData = async (params: AvailabilityParams): Promise<DayAva
     console.error('Error fetching availability data:', error);
     throw error;
   }
+  */
 };
 
 /**

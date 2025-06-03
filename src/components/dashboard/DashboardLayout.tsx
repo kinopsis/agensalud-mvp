@@ -24,11 +24,13 @@ import {
   X,
   Building2,
   Stethoscope,
-  Book
+  Book,
+  MessageSquare
 } from 'lucide-react';
 import Breadcrumbs from '@/components/navigation/Breadcrumbs';
 import LogoutConfirmationDialog from '@/components/common/LogoutConfirmationDialog';
 import { useState } from 'react';
+import { useIsClient } from '@/utils/hydration-safe';
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -55,8 +57,10 @@ export default function DashboardLayout({
   const { organization } = useTenant();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showLogoutConfirmation, setShowLogoutConfirmation] = useState(false);
+  const isClient = useIsClient();
 
-  if (!user || !profile) {
+  // Show loading state during SSR or while auth is loading
+  if (!isClient || !user || !profile) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
@@ -158,6 +162,12 @@ export default function DashboardLayout({
         roles: ['admin']
       },
       {
+        name: 'Canales de Comunicación',
+        href: '/admin/channels',
+        icon: MessageSquare,
+        roles: ['admin', 'superadmin']
+      },
+      {
         name: 'Configuración',
         href: '/settings',
         icon: Settings,
@@ -190,7 +200,7 @@ export default function DashboardLayout({
         className={`fixed inset-0 z-50 lg:hidden transition-opacity duration-300 ${
           sidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
-        aria-hidden={sidebarOpen ? 'false' : 'true'}
+        aria-hidden={!sidebarOpen}
       >
         <div
           className="fixed inset-0 bg-gray-600 bg-opacity-75 transition-opacity duration-300"

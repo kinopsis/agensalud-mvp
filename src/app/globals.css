@@ -3,6 +3,20 @@
 @tailwind utilities;
 
 /* Custom styles for AgentSalud MVP */
+:root {
+  /* Medical Color Palette - Professional Healthcare Colors */
+  --medical-blue: #0066CC;
+  --medical-teal: #00A693;
+  --medical-navy: #1E3A8A;
+  --warm-orange: #F59E0B;
+  --soft-green: #10B981;
+  --light-blue: #EBF8FF;
+  --neutral-gray: #6B7280;
+  --light-gray: #F9FAFB;
+  --medical-purple: #7C3AED;
+  --medical-red: #DC2626;
+}
+
 body {
   font-family: system-ui, -apple-system, sans-serif;
 }
@@ -101,4 +115,49 @@ body {
   .transition-transform {
     transition: none;
   }
+}
+
+/* Medical AI Theme Classes */
+.medical-gradient-blue {
+  background: linear-gradient(135deg, var(--medical-blue), var(--medical-teal));
+}
+
+.medical-gradient-purple {
+  background: linear-gradient(135deg, var(--medical-purple), var(--medical-blue));
+}
+
+.medical-gradient-green {
+  background: linear-gradient(135deg, var(--soft-green), var(--medical-teal));
+}
+
+.medical-text-gradient {
+  background: linear-gradient(135deg, var(--medical-blue), var(--medical-teal));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* AI Demo Animation */
+@keyframes ai-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.02);
+  }
+}
+
+.ai-pulse {
+  animation: ai-pulse 2s ease-in-out infinite;
+}
+
+/* Professional Medical Shadows */
+.medical-shadow {
+  box-shadow: 0 4px 20px rgba(0, 102, 204, 0.1);
+}
+
+.medical-shadow-lg {
+  box-shadow: 0 10px 40px rgba(0, 102, 204, 0.15);
 }

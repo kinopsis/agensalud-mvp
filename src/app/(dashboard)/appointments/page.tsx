@@ -1,14 +1,16 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import * as React from 'react'
+const { useState, useEffect } = React
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/auth-context'
 import { useTenant } from '@/contexts/tenant-context'
-import { cancelAppointment, updateAppointment } from '@/app/api/appointments/actions'
+// Removed direct import of server actions - will use API routes instead
 import { createClient } from '@/lib/supabase/client'
 import DashboardLayout from '@/components/dashboard/DashboardLayout'
 import AppointmentCard, { type AppointmentData } from '@/components/appointments/AppointmentCard'
+import { getAppointmentCardForRole } from '@/components/appointments/cards/factory'
 import AppointmentTabs, {
   type TabType,
   filterAppointmentsByTab,
@@ -18,19 +20,39 @@ import AppointmentTabs, {
 import DateGroupHeader from '@/components/appointments/DateGroupHeader'
 import AIEnhancedRescheduleModal from '@/components/appointments/AIEnhancedRescheduleModal'
 import CancelAppointmentModal from '@/components/appointments/CancelAppointmentModal'
+import AppointmentStatsCards from '@/components/appointments/AppointmentStatsCards'
 import { groupAppointmentsByDate, getSortedGroupKeys, getDateHeader } from '@/utils/dateGrouping'
 import { Calendar, Plus, Filter, AlertCircle } from 'lucide-react'
+import AppointmentsErrorBoundary from '@/components/error-boundary/AppointmentsErrorBoundary'
+import {
+  useIsClient,
+  useClientDate,
+  useHydrationSafeNavigation,
+  useTimeCalculation,
+  useAppointmentStatus,
+  HydrationSafe
+} from '@/utils/hydration-safe'
 
 // Use the AppointmentData type from the component
 type Appointment = AppointmentData;
 
-export default function AppointmentsPage() {
+function AppointmentsPageContent() {
+  // Defensive check for React hooks availability
+  if (typeof useState !== 'function') {
+    throw new Error('React hooks are not available. This might be a module loading issue.');
+  }
+
   const { user, profile } = useAuth()
   const { organization } = useTenant()
   const searchParams = useSearchParams()
   const [appointments, setAppointments] = useState<Appointment[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  // Hydration-safe hooks
+  const isClient = useIsClient()
+  const currentDate = useClientDate()
+  const { navigateTo } = useHydrationSafeNavigation()
 
   // Initialize tab based on URL parameter 'view' for backward compatibility
   const getInitialTab = (): TabType => {
@@ -39,8 +61,8 @@ export default function AppointmentsPage() {
     return 'vigentes' // default
   }
 
-  // Use the custom hook for tab management
-  const { activeTab, handleTabChange } = useAppointmentTabs(getInitialTab())
+  // Use the custom hook for tab management with user role support
+  const { activeTab, handleTabChange } = useAppointmentTabs(getInitialTab(), profile?.role)
 
   // Modal states
   const [rescheduleModal, setRescheduleModal] = useState<{
@@ -54,8 +76,10 @@ export default function AppointmentsPage() {
   }>({ isOpen: false, appointment: null })
 
   useEffect(() => {
-    loadAppointments()
-  }, [profile, organization])
+    if (isClient) {
+      loadAppointments()
+    }
+  }, [profile, organization, isClient])
 
   const loadAppointments = async () => {
     if (!profile || !organization) return
@@ -163,7 +187,18 @@ export default function AppointmentsPage() {
   // Modal handlers
   const handleConfirmCancellation = async (appointmentId: string, reason: string, customReason?: string) => {
     try {
-      const result = await cancelAppointment(appointmentId)
+      const response = await fetch(`/api/appointments/${appointmentId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          status: 'cancelled'
+        })
+      })
+
+      const result = await response.json()
+
       if (result.success) {
         // Store cancellation analytics
         await storeCancellationAnalytics(appointmentId, reason, customReason)
@@ -195,7 +230,7 @@ export default function AppointmentsPage() {
         original_time: appointment.start_time,
         user_id: profile.id,
         user_role: profile.role,
-        time_to_action: `${Math.floor((new Date().getTime() - new Date(appointment.appointment_date).getTime()) / (1000 * 60 * 60 * 24))} days`
+        time_to_action: currentDate ? `${Math.floor((currentDate.getTime() - new Date(appointment.appointment_date).getTime()) / (1000 * 60 * 60 * 24))} days` : '0 days'
       })
     } catch (error) {
       console.error('Error storing cancellation analytics:', error)
@@ -205,11 +240,19 @@ export default function AppointmentsPage() {
 
   const handleConfirmReschedule = async (appointmentId: string, newDate: string, newTime: string) => {
     try {
-      const result = await updateAppointment({
-        id: appointmentId,
-        appointment_date: newDate,
-        start_time: newTime
+      const response = await fetch(`/api/appointments/${appointmentId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          appointment_date: newDate,
+          start_time: newTime
+        })
       })
+
+      const result = await response.json()
+
       if (result.success) {
         // Store reschedule analytics
         await storeRescheduleAnalytics(appointmentId, newDate, newTime)
@@ -241,7 +284,7 @@ export default function AppointmentsPage() {
         new_time: newTime,
         user_id: profile.id,
         user_role: profile.role,
-        time_to_action: `${Math.floor((new Date().getTime() - new Date(appointment.appointment_date).getTime()) / (1000 * 60 * 60 * 24))} days`
+        time_to_action: currentDate ? `${Math.floor((currentDate.getTime() - new Date(appointment.appointment_date).getTime()) / (1000 * 60 * 60 * 24))} days` : '0 days'
       })
     } catch (error) {
       console.error('Error storing reschedule analytics:', error)
@@ -251,10 +294,18 @@ export default function AppointmentsPage() {
 
   const handleStatusChange = async (appointmentId: string, newStatus: string) => {
     try {
-      const result = await updateAppointment({
-        id: appointmentId,
-        status: newStatus as any
+      const response = await fetch(`/api/appointments/${appointmentId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          status: newStatus
+        })
       })
+
+      const result = await response.json()
+
       if (result.success) {
         loadAppointments() // Reload appointments
       } else {
@@ -265,13 +316,22 @@ export default function AppointmentsPage() {
     }
   }
 
+  // 🔧 CRITICAL FIX: Add missing onViewDetails handler
+  const handleViewDetails = (appointmentId: string) => {
+    console.log('👁️ Viewing appointment details:', appointmentId);
+
+    // Navigate to appointment details page using hydration-safe navigation
+    navigateTo(`/appointments/${appointmentId}`);
+  }
+
   // Status functions moved to AppointmentCard component
 
   const canCancelAppointment = (appointment: Appointment) => {
-    // Check if appointment is in the future
+    // Check if appointment is in the future using hydration-safe date
+    if (!currentDate) return false; // Can't determine status without current date
+
     const appointmentDateTime = new Date(`${appointment.appointment_date}T${appointment.start_time}`)
-    const now = new Date()
-    const isFuture = appointmentDateTime > now
+    const isFuture = appointmentDateTime > currentDate
 
     // Check if status allows cancellation (simplified states)
     const cancellableStatuses = ['confirmed', 'pending']
@@ -296,10 +356,11 @@ export default function AppointmentsPage() {
   }
 
   const canRescheduleAppointment = (appointment: Appointment) => {
-    // Check if appointment is in the future
+    // Check if appointment is in the future using hydration-safe date
+    if (!currentDate) return false; // Can't determine status without current date
+
     const appointmentDateTime = new Date(`${appointment.appointment_date}T${appointment.start_time}`)
-    const now = new Date()
-    const isFuture = appointmentDateTime > now
+    const isFuture = appointmentDateTime > currentDate
 
     // Check if status allows rescheduling (simplified states)
     const reschedulableStatuses = ['confirmed', 'pending']
@@ -361,13 +422,16 @@ export default function AppointmentsPage() {
     </div>
   );
 
-  if (isLoading) {
+  // Show loading state during hydration or data loading
+  if (!isClient || isLoading) {
     return (
       <DashboardLayout title={getPageTitle()} subtitle="Cargando...">
         <div className="flex items-center justify-center h-64">
           <div className="text-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-            <p className="mt-4 text-gray-600">Cargando citas...</p>
+            <p className="mt-4 text-gray-600">
+              {!isClient ? 'Inicializando...' : 'Cargando citas...'}
+            </p>
           </div>
         </div>
       </DashboardLayout>
@@ -375,11 +439,21 @@ export default function AppointmentsPage() {
   }
 
   return (
-    <DashboardLayout
-      title={getPageTitle()}
-      subtitle={getPageSubtitle()}
-      actions={actions}
-    >
+    <HydrationSafe fallback={
+      <DashboardLayout title={getPageTitle()} subtitle="Inicializando...">
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+            <p className="mt-4 text-gray-600">Inicializando...</p>
+          </div>
+        </div>
+      </DashboardLayout>
+    }>
+      <DashboardLayout
+        title={getPageTitle()}
+        subtitle={getPageSubtitle()}
+        actions={actions}
+      >
       <div className="space-y-6">
         {/* Error Alert */}
         {error && (
@@ -394,24 +468,29 @@ export default function AppointmentsPage() {
           </div>
         )}
 
-        {/* Appointment Tabs - Only show for patients */}
-        {profile?.role === 'patient' && (
-          <div className="bg-white shadow rounded-lg overflow-hidden">
-            <AppointmentTabs
-              appointments={appointments}
-              activeTab={activeTab}
-              onTabChange={handleTabChange}
-              loading={isLoading}
-            />
-          </div>
-        )}
+        {/* Statistics Cards - Unified for all roles */}
+        <AppointmentStatsCards
+          appointments={appointments}
+          userRole={profile?.role || 'patient'}
+          loading={isLoading}
+          organizationName={organization?.name}
+        />
+
+        {/* Appointment Tabs - Available for all roles */}
+        <div className="bg-white shadow rounded-lg overflow-hidden">
+          <AppointmentTabs
+            appointments={appointments}
+            activeTab={activeTab}
+            onTabChange={handleTabChange}
+            userRole={profile?.role}
+            loading={isLoading}
+          />
+        </div>
 
         {/* Appointments List */}
         {(() => {
-          // Filter appointments based on active tab for patients, show all for other roles
-          const filteredAppointments = profile?.role === 'patient'
-            ? filterAppointmentsByTab(appointments, activeTab)
-            : appointments;
+          // Filter appointments based on active tab for all roles
+          const filteredAppointments = filterAppointmentsByTab(appointments, activeTab);
 
           if (appointments.length === 0) {
             return (
@@ -436,11 +515,15 @@ export default function AppointmentsPage() {
             );
           }
 
-          if (filteredAppointments.length === 0 && profile?.role === 'patient') {
+          if (filteredAppointments.length === 0) {
             return (
               <EmptyTabMessage
                 tabType={activeTab}
-                onCreateAppointment={() => window.location.href = '/appointments/book'}
+                onCreateAppointment={
+                  profile?.role === 'patient'
+                    ? () => navigateTo('/appointments/book')
+                    : undefined
+                }
               />
             );
           }
@@ -465,22 +548,30 @@ export default function AppointmentsPage() {
                     />
 
                     <div className="space-y-4">
-                      {group.appointments.map((appointment) => (
-                        <AppointmentCard
-                          key={appointment.id}
-                          appointment={appointment}
-                          userRole={profile?.role || 'patient'}
-                          onReschedule={handleRescheduleAppointment}
-                          onCancel={handleCancelAppointment}
-                          onStatusChange={handleStatusChange}
-                          canReschedule={canRescheduleAppointment(appointment)}
-                          canCancel={canCancelAppointment(appointment)}
-                          canChangeStatus={canChangeStatus(appointment)}
-                          showLocation={true}
-                          showCost={profile?.role !== 'patient'}
-                          showDuration={true}
-                        />
-                      ))}
+                      {group.appointments.map((appointment) => {
+                        // 🚨 CRITICAL FIX: Use role-specific component to ensure patient visibility
+                        const AppointmentCardComponent = getAppointmentCardForRole(profile?.role || 'patient');
+
+                        return (
+                          <AppointmentCardComponent
+                            key={appointment.id}
+                            appointment={appointment}
+                            userRole={profile?.role || 'patient'}
+                            onReschedule={handleRescheduleAppointment}
+                            onCancel={handleCancelAppointment}
+                            onStatusChange={handleStatusChange}
+                            onViewDetails={handleViewDetails} // 🔧 CRITICAL FIX: Add missing onViewDetails
+                            canReschedule={canRescheduleAppointment(appointment)}
+                            canCancel={canCancelAppointment(appointment)}
+                            canChangeStatus={canChangeStatus(appointment)}
+                            canViewDetails={profile?.role !== 'patient'} // 🔧 Enable for non-patient roles
+                            showLocation={true}
+                            showCost={profile?.role !== 'patient'}
+                            showDuration={true}
+                            // 🔧 CRITICAL: AdminAppointmentCard forces showPatient={true} internally
+                          />
+                        );
+                      })}
                     </div>
                   </div>
                 );
@@ -511,6 +602,16 @@ export default function AppointmentsPage() {
         loading={isLoading}
         error={error}
       />
-    </DashboardLayout>
+      </DashboardLayout>
+    </HydrationSafe>
+  )
+}
+
+// Main component wrapped with error boundary
+export default function AppointmentsPage() {
+  return (
+    <AppointmentsErrorBoundary>
+      <AppointmentsPageContent />
+    </AppointmentsErrorBoundary>
   )
 }

@@ -1,0 +1,288 @@
+# Docker Compose Configuration for AgentSalud MVP Staging Environment
+# Includes Evolution API v2, PostgreSQL, Redis, and monitoring services
+# 
+# @author AgentSalud DevOps Team
+# @date January 2025
+
+version: '3.8'
+
+services:
+  # =====================================================
+  # EVOLUTION API v2 - WhatsApp Business Integration
+  # =====================================================
+  evolution-api:
+    image: atendai/evolution-api:v2.0.0
+    container_name: agentsalud-evolution-staging
+    restart: unless-stopped
+    environment:
+      # Database Configuration
+      - DATABASE_URL=postgresql://evolution_user:${POSTGRES_PASSWORD}@postgres:5432/evolution_staging
+      - DATABASE_CONNECTION_LIMIT=100
+      - DATABASE_CONNECTION_CLIENT_NAME=EvolutionAPI-Staging
+      
+      # Redis Configuration
+      - REDIS_URL=redis://redis:6379
+      - REDIS_PREFIX=evolution:staging
+      
+      # Server Configuration
+      - SERVER_TYPE=http
+      - SERVER_PORT=8080
+      - SERVER_URL=${EVOLUTION_API_BASE_URL}
+      
+      # Webhook Configuration
+      - WEBHOOK_GLOBAL_URL=${WEBHOOK_GLOBAL_URL}
+      - WEBHOOK_GLOBAL_ENABLED=true
+      - WEBHOOK_GLOBAL_WEBHOOK_BY_EVENTS=true
+      
+      # WhatsApp Configuration
+      - CONFIG_SESSION_PHONE_CLIENT=AgentSalud-Staging
+      - CONFIG_SESSION_PHONE_NAME=AgentSalud MVP
+      - QRCODE_LIMIT=30
+      - QRCODE_COLOR=#198754
+      
+      # Authentication
+      - AUTHENTICATION_TYPE=apikey
+      - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY}
+      - AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES=true
+      
+      # Logging
+      - LOG_LEVEL=ERROR,WARN,DEBUG,INFO,LOG,VERBOSE,DARK,WEBHOOKS
+      - LOG_COLOR=true
+      - LOG_BAILEYS=error
+      
+      # Storage
+      - STORE_MESSAGES=true
+      - STORE_MESSAGE_UP=true
+      - STORE_CONTACTS=true
+      - STORE_CHATS=true
+      
+      # Cleanup
+      - CLEAN_STORE_CLEANING_INTERVAL=7200
+      - CLEAN_STORE_MESSAGES=true
+      - CLEAN_STORE_MESSAGE_UP=true
+      - CLEAN_STORE_CONTACTS=true
+      - CLEAN_STORE_CHATS=true
+      
+      # Instance Configuration
+      - DEL_INSTANCE=false
+      - DEL_TEMP_INSTANCES=true
+      
+    ports:
+      - "8080:8080"
+    volumes:
+      - evolution_instances:/evolution/instances
+      - evolution_store:/evolution/store
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - agentsalud-staging
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # =====================================================
+  # POSTGRESQL DATABASE
+  # =====================================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: agentsalud-postgres-staging
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=evolution_staging
+      - POSTGRES_USER=evolution_user
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_INITDB_ARGS=--encoding=UTF-8 --lc-collate=C --lc-ctype=C
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d
+    networks:
+      - agentsalud-staging
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U evolution_user -d evolution_staging"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # =====================================================
+  # REDIS CACHE
+  # =====================================================
+  redis:
+    image: redis:7-alpine
+    container_name: agentsalud-redis-staging
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - agentsalud-staging
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # =====================================================
+  # NGINX REVERSE PROXY
+  # =====================================================
+  nginx:
+    image: nginx:alpine
+    container_name: agentsalud-nginx-staging
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./ssl:/etc/nginx/ssl:ro
+      - nginx_logs:/var/log/nginx
+    depends_on:
+      - evolution-api
+    networks:
+      - agentsalud-staging
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # =====================================================
+  # MONITORING - PROMETHEUS
+  # =====================================================
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: agentsalud-prometheus-staging
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    networks:
+      - agentsalud-staging
+
+  # =====================================================
+  # MONITORING - GRAFANA
+  # =====================================================
+  grafana:
+    image: grafana/grafana:latest
+    container_name: agentsalud-grafana-staging
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
+    depends_on:
+      - prometheus
+    networks:
+      - agentsalud-staging
+
+  # =====================================================
+  # LOG AGGREGATION - LOKI
+  # =====================================================
+  loki:
+    image: grafana/loki:latest
+    container_name: agentsalud-loki-staging
+    restart: unless-stopped
+    command: -config.file=/etc/loki/local-config.yaml
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./monitoring/loki-config.yaml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    networks:
+      - agentsalud-staging
+
+  # =====================================================
+  # LOG COLLECTION - PROMTAIL
+  # =====================================================
+  promtail:
+    image: grafana/promtail:latest
+    container_name: agentsalud-promtail-staging
+    restart: unless-stopped
+    command: -config.file=/etc/promtail/config.yml
+    volumes:
+      - ./monitoring/promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/log:/var/log:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - loki
+    networks:
+      - agentsalud-staging
+
+  # =====================================================
+  # HEALTH CHECK SERVICE
+  # =====================================================
+  healthcheck:
+    image: curlimages/curl:latest
+    container_name: agentsalud-healthcheck-staging
+    restart: unless-stopped
+    command: >
+      sh -c "
+        while true; do
+          echo 'Health check at $(date)'
+          curl -f http://evolution-api:8080 || echo 'Evolution API health check failed'
+          curl -f http://nginx:80 || echo 'Nginx health check failed'
+          sleep 60
+        done
+      "
+    depends_on:
+      - evolution-api
+      - nginx
+    networks:
+      - agentsalud-staging
+
+# =====================================================
+# NETWORKS
+# =====================================================
+networks:
+  agentsalud-staging:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+# =====================================================
+# VOLUMES
+# =====================================================
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  evolution_instances:
+    driver: local
+  evolution_store:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+  loki_data:
+    driver: local
+  nginx_logs:
+    driver: local

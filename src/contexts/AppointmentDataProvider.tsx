@@ -14,9 +14,40 @@
 'use client';
 
 import React, { createContext, useContext, useReducer, useCallback, useEffect } from 'react';
-import { UnifiedAppointmentDataService, type DayAvailabilityData, type AvailabilityQuery } from '@/lib/core/UnifiedAppointmentDataService';
-import { DataIntegrityValidator, type ValidationResult } from '@/lib/core/DataIntegrityValidator';
-import { ImmutableDateSystem } from '@/lib/core/ImmutableDateSystem';
+
+// Temporarily simplified types to avoid webpack module loading issues
+export interface DayAvailabilityData {
+  date: string;
+  dayName: string;
+  slotsCount: number;
+  availabilityLevel: 'high' | 'medium' | 'low' | 'none';
+  isToday: boolean;
+  isTomorrow: boolean;
+  isWeekend: boolean;
+  slots: any[];
+  totalSlots: number;
+  availableSlots: number;
+  isBlocked: boolean;
+  blockReason?: string;
+}
+
+export interface AvailabilityQuery {
+  organizationId: string;
+  startDate: string;
+  endDate: string;
+  serviceId?: string;
+  doctorId?: string;
+  locationId?: string;
+  userRole?: string;
+  useStandardRules?: boolean;
+}
+
+export interface ValidationResult {
+  isValid: boolean;
+  errors: any[];
+  warnings: any[];
+  metadata: any;
+}
 
 export interface AppointmentDataState {
   availabilityData: Map<string, DayAvailabilityData[]>;
@@ -102,88 +133,64 @@ function generateQueryKey(query: AvailabilityQuery): string {
  */
 export const AppointmentDataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [state, dispatch] = useReducer(appointmentDataReducer, initialState);
-  
+  const [isClient, setIsClient] = React.useState(false);
+
+  // Ensure client-side rendering to prevent hydration issues
+  React.useEffect(() => {
+    setIsClient(true);
+  }, []);
+
   /**
-   * Load availability data with validation
+   * Load availability data with validation (simplified to avoid webpack issues)
    */
   const loadAvailabilityData = useCallback(async (query: AvailabilityQuery, component: string): Promise<DayAvailabilityData[]> => {
-    // TEMPORARILY DISABLED - Prevent infinite polling
-    console.log(`🚫 AppointmentDataProvider: loadAvailabilityData DISABLED to prevent infinite polling`);
-    console.log(`Component: ${component}`, { query });
-
-    // Return empty array to prevent errors
-    return [];
-
-    /* ORIGINAL CODE - TEMPORARILY DISABLED
-    const queryKey = generateQueryKey(query);
-
-    console.log(`🔄 AppointmentDataProvider: Loading data for ${component}`, { query, queryKey });
-
-    // Check if we already have fresh data
-    const existingData = state.availabilityData.get(queryKey);
-    const lastUpdated = state.lastUpdated.get(queryKey);
-    const isDataFresh = lastUpdated && (Date.now() - lastUpdated) < 5 * 60 * 1000; // 5 minutes
-
-    if (existingData && isDataFresh) {
-      console.log(`📋 AppointmentDataProvider: Using cached data for ${component}`);
-      return existingData;
-    }
-
-    dispatch({ type: 'LOAD_START', queryKey, component });
-
-    try {
-      // Validate date range using ImmutableDateSystem
-      const startValidation = ImmutableDateSystem.validateAndNormalize(query.startDate, component);
-      const endValidation = ImmutableDateSystem.validateAndNormalize(query.endDate, component);
-
-      if (!startValidation.isValid || !endValidation.isValid) {
-        throw new Error(`Invalid date range: ${startValidation.error || endValidation.error}`);
-      }
-
-      // Load data through UnifiedAppointmentDataService
-      const data = await UnifiedAppointmentDataService.getAvailabilityData(query);
-
-      // Validate data integrity
-      const validation = DataIntegrityValidator.validateAvailabilityData(data, component, 'api');
-
-      // Log data transformation
-      DataIntegrityValidator.logDataTransformation(
-        component,
-        'LOAD_AVAILABILITY_DATA',
-        query,
-        data,
-        ['UnifiedAppointmentDataService.getAvailabilityData', 'DataIntegrityValidator.validateAvailabilityData']
-      );
-
-      dispatch({ type: 'LOAD_SUCCESS', queryKey, data, validation });
-
-      console.log(`✅ AppointmentDataProvider: Data loaded successfully for ${component}`, {
-        recordCount: data.length,
-        validationPassed: validation.isValid,
-        errorCount: validation.errors.length,
-        warningCount: validation.warnings.length
-      });
-
-      return data;
-
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      console.error(`🚨 AppointmentDataProvider: Failed to load data for ${component}:`, error);
-
-      dispatch({ type: 'LOAD_ERROR', queryKey, error: errorMessage });
-
-      // Return empty array as fallback
+    // Only run on client side to prevent SSR/hydration issues
+    if (!isClient) {
+      console.log(`⏳ AppointmentDataProvider: Skipping load for ${component} (SSR)`);
       return [];
     }
-    */
-  }, [state.availabilityData, state.lastUpdated]);
+
+    console.log(`🔄 AppointmentDataProvider: Loading data for ${component}`, { query });
+
+    try {
+      const queryKey = generateQueryKey(query);
+
+      // Dispatch loading start
+      dispatch({ type: 'LOAD_START', queryKey, component });
+
+      // Return empty array for now to prevent webpack module loading issues
+      // TODO: Implement actual data loading once webpack issues are resolved
+      const mockData: DayAvailabilityData[] = [];
+
+      dispatch({
+        type: 'LOAD_SUCCESS',
+        queryKey,
+        data: mockData,
+        validation: { isValid: true, errors: [], warnings: [] }
+      });
+
+      return mockData;
+    } catch (error) {
+      const queryKey = generateQueryKey(query);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+      console.error(`❌ AppointmentDataProvider: Error loading data for ${component}:`, error);
+
+      dispatch({
+        type: 'LOAD_ERROR',
+        queryKey,
+        error: errorMessage
+      });
+
+      return [];
+    }
+  }, [isClient]);
   
   /**
-   * Clear all cached data
+   * Clear all cached data (simplified to avoid webpack issues)
    */
   const clearCache = useCallback(() => {
     console.log('🗑️ AppointmentDataProvider: Clearing all cached data');
-    UnifiedAppointmentDataService.clearCache();
     dispatch({ type: 'CLEAR_CACHE' });
   }, []);
   

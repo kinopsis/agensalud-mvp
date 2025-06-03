@@ -651,6 +651,277 @@ export type Database = {
           },
         ]
       }
+      whatsapp_audit_log: {
+        Row: {
+          action: string
+          actor_id: string | null
+          actor_type: string | null
+          conversation_id: string | null
+          created_at: string | null
+          details: Json | null
+          id: string
+          ip_address: string | null
+          organization_id: string
+          session_id: string | null
+          target_entity_id: string | null
+          target_entity_type: string | null
+          user_agent: string | null
+          whatsapp_instance_id: string | null
+        }
+        Insert: {
+          action: string
+          actor_id?: string | null
+          actor_type?: string | null
+          conversation_id?: string | null
+          created_at?: string | null
+          details?: Json | null
+          id?: string
+          ip_address?: string | null
+          organization_id: string
+          session_id?: string | null
+          target_entity_id?: string | null
+          target_entity_type?: string | null
+          user_agent?: string | null
+          whatsapp_instance_id?: string | null
+        }
+        Update: {
+          action?: string
+          actor_id?: string | null
+          actor_type?: string | null
+          conversation_id?: string | null
+          created_at?: string | null
+          details?: Json | null
+          id?: string
+          ip_address?: string | null
+          organization_id?: string
+          session_id?: string | null
+          target_entity_id?: string | null
+          target_entity_type?: string | null
+          user_agent?: string | null
+          whatsapp_instance_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_audit_log_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_audit_log_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_audit_log_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_audit_log_whatsapp_instance_id_fkey"
+            columns: ["whatsapp_instance_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_instances"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      whatsapp_conversations: {
+        Row: {
+          contact_jid: string
+          contact_name: string | null
+          context_data: Json | null
+          conversation_state: string | null
+          created_at: string | null
+          id: string
+          intent_detected: string | null
+          last_message_at: string | null
+          organization_id: string
+          patient_id: string | null
+          session_expires_at: string | null
+          updated_at: string | null
+          whatsapp_instance_id: string
+        }
+        Insert: {
+          contact_jid: string
+          contact_name?: string | null
+          context_data?: Json | null
+          conversation_state?: string | null
+          created_at?: string | null
+          id?: string
+          intent_detected?: string | null
+          last_message_at?: string | null
+          organization_id: string
+          patient_id?: string | null
+          session_expires_at?: string | null
+          updated_at?: string | null
+          whatsapp_instance_id: string
+        }
+        Update: {
+          contact_jid?: string
+          contact_name?: string | null
+          context_data?: Json | null
+          conversation_state?: string | null
+          created_at?: string | null
+          id?: string
+          intent_detected?: string | null
+          last_message_at?: string | null
+          organization_id?: string
+          patient_id?: string | null
+          session_expires_at?: string | null
+          updated_at?: string | null
+          whatsapp_instance_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_conversations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_conversations_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_conversations_whatsapp_instance_id_fkey"
+            columns: ["whatsapp_instance_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_instances"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      whatsapp_instances: {
+        Row: {
+          access_token: string | null
+          business_id: string | null
+          created_at: string | null
+          error_message: string | null
+          evolution_api_config: Json | null
+          id: string
+          instance_name: string
+          last_connected_at: string | null
+          organization_id: string
+          phone_number: string
+          qr_code: string | null
+          session_data: Json | null
+          status: string | null
+          updated_at: string | null
+          webhook_url: string | null
+        }
+        Insert: {
+          access_token?: string | null
+          business_id?: string | null
+          created_at?: string | null
+          error_message?: string | null
+          evolution_api_config?: Json | null
+          id?: string
+          instance_name: string
+          last_connected_at?: string | null
+          organization_id: string
+          phone_number: string
+          qr_code?: string | null
+          session_data?: Json | null
+          status?: string | null
+          updated_at?: string | null
+          webhook_url?: string | null
+        }
+        Update: {
+          access_token?: string | null
+          business_id?: string | null
+          created_at?: string | null
+          error_message?: string | null
+          evolution_api_config?: Json | null
+          id?: string
+          instance_name?: string
+          last_connected_at?: string | null
+          organization_id?: string
+          phone_number?: string
+          qr_code?: string | null
+          session_data?: Json | null
+          status?: string | null
+          updated_at?: string | null
+          webhook_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_instances_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      whatsapp_messages: {
+        Row: {
+          ai_response_generated: boolean | null
+          content: string | null
+          conversation_id: string
+          created_at: string | null
+          direction: string
+          error_message: string | null
+          extracted_entities: Json | null
+          id: string
+          intent_detected: string | null
+          media_caption: string | null
+          media_url: string | null
+          message_id: string
+          message_type: string
+          processed: boolean | null
+        }
+        Insert: {
+          ai_response_generated?: boolean | null
+          content?: string | null
+          conversation_id: string
+          created_at?: string | null
+          direction: string
+          error_message?: string | null
+          extracted_entities?: Json | null
+          id?: string
+          intent_detected?: string | null
+          media_caption?: string | null
+          media_url?: string | null
+          message_id: string
+          message_type: string
+          processed?: boolean | null
+        }
+        Update: {
+          ai_response_generated?: boolean | null
+          content?: string | null
+          conversation_id?: string
+          created_at?: string | null
+          direction?: string
+          error_message?: string | null
+          extracted_entities?: Json | null
+          id?: string
+          intent_detected?: string | null
+          media_caption?: string | null
+          media_url?: string | null
+          message_id?: string
+          message_type?: string
+          processed?: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -679,6 +950,21 @@ export type Database = {
       }
       get_user_role: {
         Args: Record<PropertyKey, never>
+        Returns: string
+      }
+      get_active_whatsapp_instance: {
+        Args: { org_id: string }
+        Returns: string
+      }
+      create_whatsapp_audit_log: {
+        Args: {
+          p_organization_id: string
+          p_action: string
+          p_actor_id?: string
+          p_actor_type?: string
+          p_conversation_id?: string
+          p_details?: Json
+        }
         Returns: string
       }
     }

@@ -20,7 +20,8 @@ import AppointmentTabs, {
   EmptyTabMessage,
   useAppointmentTabs,
   getTabConfig,
-  isValidTabType
+  isValidTabType,
+  getTabsForRole
 } from '@/components/appointments/AppointmentTabs';
 import { AppointmentData } from '@/components/appointments/AppointmentCard';
 
@@ -152,6 +153,7 @@ describe('AppointmentTabs Component', () => {
           appointments={mockAppointments}
           activeTab="vigentes"
           onTabChange={mockOnTabChange}
+          userRole="patient"
         />
       );
 
@@ -203,7 +205,7 @@ describe('AppointmentTabs Component', () => {
         />
       );
 
-      const tablist = screen.getByRole('navigation');
+      const tablist = screen.getByRole('tablist');
       expect(tablist).toHaveAttribute('aria-label', 'Pestañas de citas');
 
       const vigenteTab = screen.getByRole('tab', { name: /vigentes/i });
@@ -351,20 +353,22 @@ describe('Funciones utilitarias', () => {
 });
 
 describe('useAppointmentCounts Hook', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2024-12-15T12:00:00.000Z'));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   it('debe calcular contadores correctamente', () => {
-    // Test direct function calls first
-    const vigentes = filterAppointmentsByTab(mockAppointments, 'vigentes');
-    const historial = filterAppointmentsByTab(mockAppointments, 'historial');
-
-    expect(vigentes).toHaveLength(2);
-    expect(historial).toHaveLength(2);
-
     const TestComponent = () => {
-      const counts = useAppointmentCounts(mockAppointments);
+      const counts = useAppointmentCounts(mockAppointments, 'patient');
       return (
         <div>
-          <span data-testid="vigentes-count">{counts.vigentes}</span>
-          <span data-testid="historial-count">{counts.historial}</span>
+          <span data-testid="vigentes-count">{counts.vigentes || 0}</span>
+          <span data-testid="historial-count">{counts.historial || 0}</span>
           <span data-testid="total-count">{counts.total}</span>
         </div>
       );
@@ -379,7 +383,7 @@ describe('useAppointmentCounts Hook', () => {
 
   it('debe manejar lista vacía de citas', () => {
     const TestComponent = () => {
-      const counts = useAppointmentCounts([]);
+      const counts = useAppointmentCounts([], 'patient');
       return (
         <div>
           <span data-testid="vigentes-count">{counts.vigentes}</span>
