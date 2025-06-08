@@ -1,0 +1,105 @@
+{
+  "timestamp": "2025-06-04T01:25:34.434Z",
+  "configuration": {
+    "evolutionApiUrl": "https://evo.torrecentral.com/",
+    "evolutionApiKey": "ixisatbi7f3p9m1ip37hibanq0vjq8nc",
+    "testInstanceName": "test-agentsalud-1749000328382"
+  },
+  "results": {
+    "connectivity": {
+      "success": true,
+      "instances": [
+        {
+          "id": "a02128b6-8b71-4335-84fd-2d26e73c7cf7",
+          "name": "pruebas",
+          "connectionStatus": "open",
+          "ownerJid": "573502383891@s.whatsapp.net",
+          "profileName": "Cibercentral",
+          "profilePicUrl": null,
+          "integration": "WHATSAPP-BAILEYS",
+          "number": "573104813259",
+          "businessId": null,
+          "token": "C5E3BAEE391B-42AB-8C34-5E01D842485A",
+          "clientName": "evolution_v2",
+          "disconnectionReasonCode": null,
+          "disconnectionObject": null,
+          "disconnectionAt": null,
+          "createdAt": "2025-03-06T01:40:09.587Z",
+          "updatedAt": "2025-05-27T21:53:41.092Z",
+          "Chatwoot": null,
+          "Proxy": null,
+          "Rabbitmq": null,
+          "Sqs": null,
+          "Websocket": null,
+          "Setting": {
+            "id": "cm7woj6d50001p44ywp11rekv",
+            "rejectCall": false,
+            "msgCall": "",
+            "groupsIgnore": false,
+            "alwaysOnline": false,
+            "readMessages": false,
+            "readStatus": false,
+            "syncFullHistory": false,
+            "wavoipToken": "",
+            "createdAt": "2025-03-06T01:40:09.593Z",
+            "updatedAt": "2025-03-06T01:40:09.593Z",
+            "instanceId": "a02128b6-8b71-4335-84fd-2d26e73c7cf7"
+          },
+          "_count": {
+            "Message": 4760,
+            "Contact": 451,
+            "Chat": 68
+          }
+        }
+      ]
+    },
+    "creation": {
+      "success": true,
+      "instance": {
+        "instance": {
+          "instanceName": "test-agentsalud-1749000328382",
+          "instanceId": "9a4ddbc5-bd8f-4333-971a-457909c10b86",
+          "integration": "WHATSAPP-BAILEYS",
+          "webhookWaBusiness": null,
+          "accessTokenWaBusiness": "",
+          "status": "connecting"
+        },
+        "hash": "FAD0A5F3-9F31-4B89-A588-C6791350911A",
+        "webhook": {},
+        "websocket": {},
+        "rabbitmq": {},
+        "sqs": {},
+        "settings": {
+          "rejectCall": false,
+          "msgCall": "",
+          "groupsIgnore": false,
+          "alwaysOnline": false,
+          "readMessages": false,
+          "readStatus": false,
+          "syncFullHistory": false,
+          "wavoipToken": ""
+        },
+        "qrcode": {
+          "count": 0
+        }
+      }
+    },
+    "status": {
+      "success": true,
+      "status": {
+        "instance": {
+          "instanceName": "test-agentsalud-1749000328382",
+          "state": "connecting"
+        }
+      }
+    },
+    "cleanup": {
+      "success": true
+    }
+  },
+  "summary": {
+    "total": 4,
+    "passed": 4,
+    "failed": 0
+  }
+}
