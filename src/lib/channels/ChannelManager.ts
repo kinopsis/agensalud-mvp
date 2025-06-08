@@ -59,24 +59,30 @@ export class ChannelManager {
    * Register a channel service class
    */
   registerChannelService(type: ChannelType, serviceClass: typeof BaseChannelService): void {
-    this.channelServices.set(type, serviceClass);
-    console.log(`📱 Registered channel service: ${type}`);
+    if (!this.channelServices.has(type)) {
+      this.channelServices.set(type, serviceClass);
+      console.log(`📱 Registered channel service: ${type}`);
+    }
   }
 
   /**
    * Register a message processor class
    */
   registerMessageProcessor(type: ChannelType, processorClass: typeof BaseMessageProcessor): void {
-    this.channelProcessors.set(type, processorClass);
-    console.log(`🔄 Registered message processor: ${type}`);
+    if (!this.channelProcessors.has(type)) {
+      this.channelProcessors.set(type, processorClass);
+      console.log(`🔄 Registered message processor: ${type}`);
+    }
   }
 
   /**
    * Register an appointment service class
    */
   registerAppointmentService(type: ChannelType, serviceClass: typeof BaseAppointmentService): void {
-    this.channelAppointmentServices.set(type, serviceClass);
-    console.log(`📅 Registered appointment service: ${type}`);
+    if (!this.channelAppointmentServices.has(type)) {
+      this.channelAppointmentServices.set(type, serviceClass);
+      console.log(`📅 Registered appointment service: ${type}`);
+    }
   }
 
   /**

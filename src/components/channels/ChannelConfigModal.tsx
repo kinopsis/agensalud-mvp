@@ -13,6 +13,8 @@
 import React, { useState, useEffect } from 'react';
 import { X, Save, AlertCircle, CheckCircle, Settings } from 'lucide-react';
 import type { ChannelInstance, ChannelType, ChannelInstanceConfig } from '@/types/channels';
+import { shouldShowUIElement, type WhatsAppUserRole } from '@/lib/rbac/whatsapp-permissions';
+import { useAuth } from '@/contexts/auth-context';
 
 // =====================================================
 // TYPES
@@ -57,6 +59,13 @@ export const ChannelConfigModal: React.FC<ChannelConfigModalProps> = ({
   saving = false
 }) => {
   // =====================================================
+  // HOOKS & AUTH
+  // =====================================================
+
+  const { user } = useAuth();
+  const userRole = (user?.role || 'patient') as WhatsAppUserRole;
+
+  // =====================================================
   // STATE MANAGEMENT
   // =====================================================
 
@@ -77,9 +86,10 @@ export const ChannelConfigModal: React.FC<ChannelConfigModalProps> = ({
       setConfig(instance.config || {});
       setErrors({});
       setHasChanges(false);
-      setActiveSection('general');
+      // Set initial section based on user role
+      setActiveSection(userRole === 'admin' ? 'basic' : 'general');
     }
-  }, [instance]);
+  }, [instance, userRole]);
 
   /**
    * Handle escape key to close modal
@@ -189,35 +199,54 @@ export const ChannelConfigModal: React.FC<ChannelConfigModalProps> = ({
   // =====================================================
 
   /**
-   * Get configuration sections based on channel type
+   * Get configuration sections based on channel type and user permissions
    */
   const getConfigSections = (): ConfigSection[] => {
-    const baseSections: ConfigSection[] = [
-      {
-        id: 'general',
-        title: 'General',
-        description: 'Configuración básica de la instancia',
-        icon: Settings,
-        component: React.lazy(() => import('./config-sections/GeneralConfigSection').then(m => ({ default: m.GeneralConfigSection })))
-      },
-      {
-        id: 'webhook',
-        title: 'Webhook',
-        description: 'Configuración de webhooks y eventos',
-        icon: Settings,
-        component: React.lazy(() => import('./config-sections/WebhookConfigSection').then(m => ({ default: m.WebhookConfigSection })))
-      },
-      {
-        id: 'ai',
-        title: 'Inteligencia Artificial',
-        description: 'Configuración del asistente IA',
-        icon: Settings,
-        component: React.lazy(() => import('./config-sections/AIConfigSection').then(m => ({ default: m.AIConfigSection })))
-      }
-    ];
+    // For tenant admin users, show only basic connection controls
+    if (userRole === 'admin') {
+      return [
+        {
+          id: 'basic',
+          title: 'Conexión',
+          description: 'Estado de conexión y controles básicos',
+          icon: Settings,
+          component: () => null // Rendered inline in switch statement
+        }
+      ];
+    }
 
-    // Add channel-specific sections
-    if (instance?.channel_type === 'whatsapp') {
+    // For superadmin, show all configuration sections
+    const baseSections: ConfigSection[] = [];
+
+    // Only show advanced sections for superadmin
+    if (shouldShowUIElement(userRole, 'showAdvancedSettings')) {
+      baseSections.push(
+        {
+          id: 'general',
+          title: 'General',
+          description: 'Configuración básica de la instancia',
+          icon: Settings,
+          component: React.lazy(() => import('./config-sections/GeneralConfigSection').then(m => ({ default: m.GeneralConfigSection })))
+        },
+        {
+          id: 'webhook',
+          title: 'Webhook',
+          description: 'Configuración de webhooks y eventos',
+          icon: Settings,
+          component: React.lazy(() => import('./config-sections/WebhookConfigSection').then(m => ({ default: m.WebhookConfigSection })))
+        },
+        {
+          id: 'ai',
+          title: 'Inteligencia Artificial',
+          description: 'Configuración del asistente IA',
+          icon: Settings,
+          component: React.lazy(() => import('./config-sections/AIConfigSection').then(m => ({ default: m.AIConfigSection })))
+        }
+      );
+    }
+
+    // Add channel-specific sections for superadmin only
+    if (instance?.channel_type === 'whatsapp' && shouldShowUIElement(userRole, 'showEvolutionApiFields')) {
       baseSections.push({
         id: 'whatsapp',
         title: 'WhatsApp',
@@ -349,6 +378,62 @@ export const ChannelConfigModal: React.FC<ChannelConfigModalProps> = ({
 
                 // Render section based on type
                 switch (activeSection) {
+                  case 'basic':
+                    return (
+                      <div className="space-y-6">
+                        <div className="text-center">
+                          <Settings className="h-12 w-12 text-blue-500 mx-auto mb-4" />
+                          <h4 className="text-lg font-medium text-gray-900 mb-2">
+                            Estado de Conexión
+                          </h4>
+                          <p className="text-sm text-gray-500">
+                            Información básica sobre el estado de tu instancia de WhatsApp.
+                          </p>
+                        </div>
+
+                        <div className="bg-gray-50 border border-gray-200 rounded-md p-4">
+                          <div className="grid grid-cols-2 gap-4 text-sm">
+                            <div>
+                              <span className="text-gray-500">Estado:</span>
+                              <span className={`ml-2 font-medium ${
+                                instance.status === 'connected' ? 'text-green-600' : 'text-red-600'
+                              }`}>
+                                {instance.status === 'connected' ? 'Conectado' : 'Desconectado'}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">Teléfono:</span>
+                              <span className="ml-2 font-medium">
+                                {instance.config?.whatsapp?.phone_number || 'No configurado'}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">Última conexión:</span>
+                              <span className="ml-2 font-medium">
+                                {instance.last_seen ? new Date(instance.last_seen).toLocaleString() : 'Nunca'}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">Mensajes hoy:</span>
+                              <span className="ml-2 font-medium">
+                                {instance.metrics?.messages_24h || 0}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
+                          <h5 className="text-sm font-medium text-blue-900 mb-2">
+                            ℹ️ Información para Administradores
+                          </h5>
+                          <ul className="text-xs text-blue-700 space-y-1">
+                            <li>• La configuración avanzada está gestionada por el equipo técnico</li>
+                            <li>• Para cambios en la configuración, contacta al soporte</li>
+                            <li>• Puedes conectar/desconectar la instancia desde el dashboard</li>
+                          </ul>
+                        </div>
+                      </div>
+                    );
                   case 'general':
                     return (
                       <SectionComponent
@@ -413,26 +498,29 @@ export const ChannelConfigModal: React.FC<ChannelConfigModalProps> = ({
                 disabled={saving}
                 className="bg-white py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
               >
-                Cancelar
+                {userRole === 'admin' ? 'Cerrar' : 'Cancelar'}
               </button>
-              <button
-                type="button"
-                onClick={handleSave}
-                disabled={saving || !hasChanges}
-                className="bg-blue-600 py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {saving ? (
-                  <div className="flex items-center">
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                    Guardando...
-                  </div>
-                ) : (
-                  <>
-                    <Save className="h-4 w-4 inline mr-2" />
-                    Guardar Cambios
-                  </>
-                )}
-              </button>
+              {/* Only show save button for superadmin */}
+              {userRole !== 'admin' && (
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={saving || !hasChanges}
+                  className="bg-blue-600 py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {saving ? (
+                    <div className="flex items-center">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Guardando...
+                    </div>
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4 inline mr-2" />
+                      Guardar Cambios
+                    </>
+                  )}
+                </button>
+              )}
             </div>
           </div>
         </div>

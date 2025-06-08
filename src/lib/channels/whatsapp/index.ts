@@ -35,19 +35,27 @@ export {
 // CHANNEL REGISTRATION
 // =====================================================
 
+// Track registered organizations to prevent duplicate registrations
+const registeredOrganizations = new Set<string>();
+
 /**
  * Register WhatsApp services with ChannelManager
  */
 export function registerWhatsAppChannel(supabase: SupabaseClient, organizationId: string): ChannelManager {
   const manager = getChannelManager(supabase, organizationId);
-  
-  // Register WhatsApp services
-  manager.registerChannelService('whatsapp', WhatsAppChannelService);
-  manager.registerMessageProcessor('whatsapp', WhatsAppMessageProcessor);
-  manager.registerAppointmentService('whatsapp', WhatsAppAppointmentService);
-  
-  console.log('✅ WhatsApp channel registered successfully');
-  
+
+  // Only register if not already registered for this organization
+  const registrationKey = `${organizationId}`;
+  if (!registeredOrganizations.has(registrationKey)) {
+    // Register WhatsApp services
+    manager.registerChannelService('whatsapp', WhatsAppChannelService);
+    manager.registerMessageProcessor('whatsapp', WhatsAppMessageProcessor);
+    manager.registerAppointmentService('whatsapp', WhatsAppAppointmentService);
+
+    registeredOrganizations.add(registrationKey);
+    console.log('✅ WhatsApp channel registered successfully');
+  }
+
   return manager;
 }
 

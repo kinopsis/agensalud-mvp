@@ -132,14 +132,26 @@ export interface EvolutionInstanceCreateRequest {
 export interface EvolutionInstanceResponse {
   instance: {
     instanceName: string;
+    instanceId: string; // Added from confirmed response structure
+    integration: 'WHATSAPP-BUSINESS' | 'WHATSAPP-BAILEYS';
+    webhookWaBusiness: string | null;
+    accessTokenWaBusiness: string;
     status: string;
   };
-  hash: {
-    apikey: string;
-  };
-  webhook?: {
-    url: string;
-    events: string[];
+  hash: string; // Updated from confirmed response structure (not an object)
+  webhook: Record<string, any>; // Generic object from confirmed response
+  websocket: Record<string, any>; // Added from confirmed response
+  rabbitmq: Record<string, any>; // Added from confirmed response
+  sqs: Record<string, any>; // Added from confirmed response
+  settings: {
+    rejectCall: boolean;
+    msgCall: string;
+    groupsIgnore: boolean;
+    alwaysOnline: boolean;
+    readMessages: boolean;
+    readStatus: boolean;
+    syncFullHistory: boolean;
+    wavoipToken: string;
   };
   qrcode?: {
     code: string;

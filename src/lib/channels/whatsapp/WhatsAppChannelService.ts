@@ -58,6 +58,9 @@ export class WhatsAppChannelService extends BaseChannelService {
   async validateConfig(config: ChannelInstanceConfig): Promise<{ valid: boolean; errors: string[] }> {
     const errors: string[] = [];
 
+    console.log('🔍 WhatsApp validation - Full config:', JSON.stringify(config, null, 2));
+    console.log('🔍 NODE_ENV:', process.env.NODE_ENV);
+
     // Validate common configuration
     if (!config.ai_config?.enabled && !config.auto_reply) {
       errors.push('Either AI or auto-reply must be enabled');
@@ -70,8 +73,31 @@ export class WhatsAppChannelService extends BaseChannelService {
       return { valid: false, errors };
     }
 
-    if (!whatsappConfig.phone_number || !whatsappConfig.phone_number.match(/^\+\d{10,15}$/)) {
-      errors.push('Valid phone number is required (format: +1234567890)');
+    console.log('🔍 WhatsApp config:', JSON.stringify(whatsappConfig, null, 2));
+
+    // Enhanced phone number validation with development mode support
+    const isDevelopment = process.env.NODE_ENV === 'development';
+    const isQRCodeFlow = !whatsappConfig.phone_number || whatsappConfig.phone_number.trim() === '';
+
+    console.log('🔍 Validation context:', {
+      isDevelopment,
+      isQRCodeFlow,
+      phoneNumber: whatsappConfig.phone_number,
+      phoneNumberLength: whatsappConfig.phone_number?.length
+    });
+
+    if (isDevelopment && isQRCodeFlow) {
+      // Development mode with QR-only flow - phone number is optional
+      console.log('🔧 Development mode: Allowing QR-only flow without phone number validation');
+    } else {
+      // Require phone number in production or when explicitly provided
+      console.log('🔍 Checking phone number validation...');
+      if (!whatsappConfig.phone_number || !whatsappConfig.phone_number.match(/^\+\d{10,15}$/)) {
+        console.log('❌ Phone number validation failed');
+        errors.push('Valid phone number is required (format: +1234567890)');
+      } else {
+        console.log('✅ Phone number validation passed');
+      }
     }
 
     if (!whatsappConfig.evolution_api?.instance_name || whatsappConfig.evolution_api.instance_name.length < 3) {
@@ -101,16 +127,45 @@ export class WhatsAppChannelService extends BaseChannelService {
 
       console.log(`🔗 Connecting WhatsApp instance: ${instance.instance_name}`);
 
-      // Create instance in Evolution API
+      // Create instance in Evolution API with confirmed minimal format
       const evolutionResponse = await this.evolutionAPI.createInstance({
         instanceName: whatsappConfig.evolution_api.instance_name,
-        integration: 'WHATSAPP-BUSINESS',
-        qrcode: whatsappConfig.qr_code?.enabled || true,
-        webhook: instance.config.webhook.url,
-        webhookByEvents: true,
-        webhookBase64: false,
-        events: instance.config.webhook.events || ['MESSAGE_RECEIVED', 'CONNECTION_UPDATE', 'QR_UPDATED']
+        integration: 'WHATSAPP-BAILEYS' // Confirmed working integration type
+        // Note: Using minimal payload format confirmed working with https://evo.torrecentral.com
       });
+
+      // Configure webhook separately after instance creation
+      if (instance.config.webhook.url) {
+        try {
+          await this.evolutionAPI.configureWebhook(whatsappConfig.evolution_api.instance_name, {
+            url: instance.config.webhook.url,
+            webhook_by_events: false,
+            webhook_base64: false,
+            events: instance.config.webhook.events || [
+              'QRCODE_UPDATED',
+              'MESSAGES_UPSERT',
+              'CONNECTION_UPDATE'
+            ]
+          });
+          console.log('✅ Webhook configured successfully for instance:', whatsappConfig.evolution_api.instance_name);
+        } catch (webhookError) {
+          console.warn('⚠️ Failed to configure webhook, continuing without webhook:', webhookError);
+        }
+      }
+
+      // Also configure QR code specific webhook
+      try {
+        const qrWebhookUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/webhooks/evolution/qrcode`;
+        await this.evolutionAPI.configureWebhook(whatsappConfig.evolution_api.instance_name, {
+          url: qrWebhookUrl,
+          webhook_by_events: true,
+          webhook_base64: true,
+          events: ['QRCODE_UPDATED']
+        });
+        console.log('✅ QR code webhook configured successfully:', qrWebhookUrl);
+      } catch (qrWebhookError) {
+        console.warn('⚠️ Failed to configure QR code webhook:', qrWebhookError);
+      }
 
       // Update instance with Evolution API data
       await this.supabase
@@ -121,18 +176,23 @@ export class WhatsAppChannelService extends BaseChannelService {
             ...instance.config,
             whatsapp: {
               ...whatsappConfig,
-              evolution_instance_id: evolutionResponse.instance?.instanceName,
-              evolution_status: evolutionResponse.instance?.status
+              evolution_instance_id: evolutionResponse.instance?.instanceId, // Use new instanceId field
+              evolution_instance_name: evolutionResponse.instance?.instanceName,
+              evolution_status: evolutionResponse.instance?.status,
+              evolution_integration: evolutionResponse.instance?.integration
             }
           },
           updated_at: new Date().toISOString()
         })
         .eq('id', instance.id);
 
-      // Log connection attempt
+      // Log connection attempt with enhanced data
       await this.logActivity(instance.id, 'connection_initiated', {
         evolutionInstanceName: whatsappConfig.evolution_api.instance_name,
-        evolutionStatus: evolutionResponse.instance?.status
+        evolutionInstanceId: evolutionResponse.instance?.instanceId,
+        evolutionStatus: evolutionResponse.instance?.status,
+        evolutionIntegration: evolutionResponse.instance?.integration,
+        apiEndpoint: this.evolutionAPI.config.baseUrl
       });
 
       console.log(`✅ WhatsApp instance connected: ${instance.instance_name}`);
@@ -289,7 +349,11 @@ export class WhatsAppChannelService extends BaseChannelService {
       }
 
     } catch (error) {
-      console.error(`Error getting WhatsApp instance status:`, error);
+      // Only log error if it's not a "Not Found" error to reduce log spam
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      if (!errorMessage.includes('Not Found')) {
+        console.error(`Error getting WhatsApp instance status:`, error);
+      }
       return 'error';
     }
   }
@@ -314,20 +378,95 @@ export class WhatsAppChannelService extends BaseChannelService {
       }
 
       const whatsappConfig = instance.config.whatsapp;
-      
-      // Get QR code from Evolution API
+
+      console.log(`🔍 Getting QR code for instance: ${instanceId} (${whatsappConfig.evolution_api.instance_name})`);
+
+      // Get QR code from Evolution API with enhanced error handling
       const qrResponse = await this.evolutionAPI.getQRCode(whatsappConfig.evolution_api.instance_name);
-      
+
+      console.log('📱 Evolution API QR response:', {
+        hasBase64: !!qrResponse.base64,
+        hasQRCode: !!qrResponse.qrcode,
+        status: qrResponse.status,
+        responseType: typeof qrResponse
+      });
+
+      // Handle different response formats from Evolution API
+      let qrCodeData: string | undefined;
+      let responseStatus = 'qr_not_ready';
+
+      // Check for connected status first
+      if (qrResponse.status === 'connected') {
+        return {
+          qrCode: undefined,
+          status: 'connected'
+        };
+      }
+
+      // Check for loading status
+      if (qrResponse.status === 'loading') {
+        return {
+          qrCode: undefined,
+          status: 'loading'
+        };
+      }
+
+      // Handle QR code data in various formats
+      if (typeof qrResponse === 'string') {
+        // Direct base64 string
+        qrCodeData = qrResponse;
+        responseStatus = 'qr_available';
+      } else if (qrResponse.base64) {
+        // Object with base64 property (user's confirmed working format)
+        qrCodeData = qrResponse.base64;
+        responseStatus = 'qr_available';
+      } else if (qrResponse.qrcode) {
+        // Object with qrcode property
+        qrCodeData = qrResponse.qrcode;
+        responseStatus = 'qr_available';
+      } else if (qrResponse.qr) {
+        // Object with qr property
+        qrCodeData = qrResponse.qr;
+        responseStatus = 'qr_available';
+      }
+
+      // Validate that we have a proper base64 image
+      if (qrCodeData && !qrCodeData.startsWith('data:image/')) {
+        // If it's just the base64 data without the data URL prefix, add it
+        if (qrCodeData.length > 100) { // Reasonable check for base64 data
+          qrCodeData = `data:image/png;base64,${qrCodeData}`;
+        }
+      }
+
+      console.log('✅ QR code processing result:', {
+        hasQRCode: !!qrCodeData,
+        status: responseStatus,
+        qrCodeLength: qrCodeData?.length || 0,
+        isValidDataURL: qrCodeData?.startsWith('data:image/') || false
+      });
+
       return {
-        qrCode: qrResponse.base64,
-        status: qrResponse.pairingCode ? 'pairing_available' : 'qr_available'
+        qrCode: qrCodeData,
+        status: responseStatus
       };
 
     } catch (error) {
-      console.error('Error getting QR code:', error);
-      return {
-        status: 'error'
-      };
+      console.error('❌ Error getting QR code:', error);
+
+      // Provide more specific error information
+      if (error instanceof Error) {
+        if (error.message.includes('not found')) {
+          throw new Error('WhatsApp instance not found in Evolution API');
+        }
+        if (error.message.includes('already connected')) {
+          return {
+            qrCode: undefined,
+            status: 'connected'
+          };
+        }
+      }
+
+      throw error; // Re-throw to let the API endpoint handle it properly
     }
   }
 

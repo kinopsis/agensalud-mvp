@@ -194,7 +194,7 @@ export const CreateInstanceForm: React.FC<CreateInstanceFormProps> = ({
           phone_number: formData.phone_number,
           evolution_api: {
             base_url: process.env.NEXT_PUBLIC_EVOLUTION_API_BASE_URL || 'http://localhost:8080',
-            api_key: process.env.NEXT_PUBLIC_EVOLUTION_API_KEY || 'default-api-key',
+            api_key: process.env.NEXT_PUBLIC_EVOLUTION_API_KEY || '',
             instance_name: formData.instance_name.toLowerCase().replace(/\s+/g, '-')
           },
           qr_code: {

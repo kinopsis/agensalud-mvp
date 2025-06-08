@@ -83,14 +83,29 @@ export async function GET(
     }
 
     // Get QR code using unified service
-    const qrResult = await whatsappService.getQRCode(instanceId);
+    let qrResult;
+    try {
+      qrResult = await whatsappService.getQRCode(instanceId);
+    } catch (error) {
+      console.error('Evolution API error getting QR code:', error);
 
-    if (!qrResult.qrCode) {
-      return NextResponse.json({ 
+      // Return specific error for Evolution API issues
+      return NextResponse.json({
         success: false,
-        error: { 
-          code: 'QR_NOT_AVAILABLE', 
-          message: 'QR code not available. Try restarting the instance.' 
+        error: {
+          code: 'EVOLUTION_API_ERROR',
+          message: 'Evolution API is not available. Please check the service configuration.',
+          details: error instanceof Error ? error.message : 'Unknown error'
+        }
+      }, { status: 503 }); // Service Unavailable
+    }
+
+    if (!qrResult || !qrResult.qrCode) {
+      return NextResponse.json({
+        success: false,
+        error: {
+          code: 'QR_NOT_AVAILABLE',
+          message: 'QR code not available. The instance may not be ready yet.'
         }
       }, { status: 404 });
     }

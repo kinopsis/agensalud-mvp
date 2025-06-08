@@ -101,12 +101,12 @@ export const evolutionInstanceCreateSchema = z.object({
     .min(3, 'Instance name must be at least 3 characters')
     .max(50, 'Instance name must be less than 50 characters')
     .regex(/^[a-zA-Z0-9_-]+$/, 'Instance name can only contain letters, numbers, underscores, and hyphens'),
-  
+
   token: z.string().optional(),
   number: z.string().optional(),
   businessId: z.string().optional(),
   qrcode: z.boolean().default(true),
-  integration: z.enum(['WHATSAPP-BUSINESS', 'WHATSAPP-BAILEYS']).default('WHATSAPP-BUSINESS')
+  integration: z.enum(['WHATSAPP-BUSINESS', 'WHATSAPP-BAILEYS', 'EVOLUTION']).default('WHATSAPP-BAILEYS')
 });
 
 /**

@@ -14,6 +14,9 @@ import React, { useState, useEffect } from 'react';
 import { MessageSquare, Phone, Send, Plus, Settings, Activity, TrendingUp, RefreshCw, Filter } from 'lucide-react';
 import DashboardLayout from '@/components/dashboard/DashboardLayout';
 import StatsCard, { StatsGrid, StatsCardSkeleton } from '@/components/dashboard/StatsCard';
+import SimpleWhatsAppModal from '@/components/whatsapp/SimpleWhatsAppModal';
+import { useAuth } from '@/contexts/auth-context';
+import { useTenant } from '@/contexts/tenant-context';
 import type {
   ChannelInstance,
   ChannelType,
@@ -123,6 +126,13 @@ export const ChannelDashboard: React.FC<ChannelDashboardProps> = ({
   const [selectedInstance, setSelectedInstance] = useState<ChannelInstance | null>(null);
   const [savingConfig, setSavingConfig] = useState(false);
 
+  // Simplified creation modal state
+  const [simplifiedCreationModalOpen, setSimplifiedCreationModalOpen] = useState(false);
+
+  // Context hooks
+  const { profile } = useAuth();
+  const { organization } = useTenant();
+
   // Load components dynamically
   useEffect(() => {
     const loadComponents = async () => {
@@ -157,21 +167,59 @@ export const ChannelDashboard: React.FC<ChannelDashboardProps> = ({
       setLoading(true);
       setError(null);
 
-      // Fetch WhatsApp instances using unified API
-      const instancesResponse = await fetch('/api/channels/whatsapp/instances');
-      if (!instancesResponse.ok) {
-        throw new Error('Failed to fetch WhatsApp instances');
-      }
-      const instancesData = await instancesResponse.json();
+      // For tenant admin users, use simple WhatsApp API
+      if (profile?.role === 'admin') {
+        // Fetch simple WhatsApp instances
+        const simpleResponse = await fetch('/api/whatsapp/simple/instances');
+        if (!simpleResponse.ok) {
+          throw new Error('Failed to fetch WhatsApp instances');
+        }
+        const simpleData = await simpleResponse.json();
 
-      if (instancesData.success) {
-        setInstances(instancesData.data.instances || []);
+        if (simpleData.success) {
+          // Convert simple instances to unified format
+          const convertedInstances = (simpleData.data || []).map((instance: any) => ({
+            id: instance.id,
+            instance_name: instance.display_name,
+            channel_type: 'whatsapp',
+            status: instance.status,
+            config: {
+              whatsapp: {
+                phone_number: instance.whatsapp_number || 'N/A'
+              }
+            },
+            created_at: instance.created_at,
+            updated_at: instance.updated_at,
+            metrics: {
+              conversations_24h: 0,
+              messages_24h: 0,
+              appointments_24h: 0
+            },
+            // Add flag to identify simple instances
+            _isSimpleInstance: true
+          }));
 
-        // Calculate unified metrics from instances data
-        const unifiedMetrics = calculateUnifiedMetrics(instancesData.data.instances || []);
-        setMetrics(unifiedMetrics);
+          setInstances(convertedInstances);
+          const unifiedMetrics = calculateUnifiedMetrics(convertedInstances);
+          setMetrics(unifiedMetrics);
+        } else {
+          throw new Error(simpleData.error || 'Failed to fetch simple instances');
+        }
       } else {
-        throw new Error(instancesData.error?.message || 'Failed to fetch instances');
+        // For superadmin, use complex channel API
+        const instancesResponse = await fetch('/api/channels/whatsapp/instances');
+        if (!instancesResponse.ok) {
+          throw new Error('Failed to fetch WhatsApp instances');
+        }
+        const instancesData = await instancesResponse.json();
+
+        if (instancesData.success) {
+          setInstances(instancesData.data.instances || []);
+          const unifiedMetrics = calculateUnifiedMetrics(instancesData.data.instances || []);
+          setMetrics(unifiedMetrics);
+        } else {
+          throw new Error(instancesData.error?.message || 'Failed to fetch instances');
+        }
       }
 
     } catch (err) {
@@ -257,8 +305,45 @@ export const ChannelDashboard: React.FC<ChannelDashboardProps> = ({
   // =====================================================
 
   const handleCreateInstance = (channelType: ChannelType) => {
-    // Navigate to create instance page
-    window.location.href = `/admin/channels/${channelType}/create`;
+    // For WhatsApp and tenant admin users, use simplified creation modal
+    if (channelType === 'whatsapp' && profile?.role === 'admin') {
+      setSimplifiedCreationModalOpen(true);
+    } else {
+      // Navigate to create instance page for other cases
+      window.location.href = `/admin/channels/${channelType}/create`;
+    }
+  };
+
+  const handleSimplifiedCreationSuccess = async (instanceId: string) => {
+    try {
+      console.log('✅ WhatsApp instance created successfully:', instanceId);
+      // Refresh instances list to show the new instance
+      await fetchChannelData();
+      // Close modal
+      setSimplifiedCreationModalOpen(false);
+      // Show success message (optional)
+      console.log('WhatsApp instance created and connected successfully:', instanceId);
+
+      // Highlight the newly created instance (optional enhancement)
+      // This could trigger a brief animation or highlight effect
+      setTimeout(() => {
+        const instanceElement = document.querySelector(`[data-instance-id="${instanceId}"]`);
+        if (instanceElement) {
+          instanceElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          instanceElement.classList.add('ring-2', 'ring-green-500', 'ring-opacity-50');
+          setTimeout(() => {
+            instanceElement.classList.remove('ring-2', 'ring-green-500', 'ring-opacity-50');
+          }, 3000);
+        }
+      }, 500);
+
+    } catch (error) {
+      console.error('Error refreshing instances after creation:', error);
+      // Still close the modal even if refresh fails
+      setSimplifiedCreationModalOpen(false);
+      // Set error state to show user there was an issue
+      setError('Instancia creada exitosamente, pero hubo un error al actualizar la lista. Recarga la página para ver la nueva instancia.');
+    }
   };
 
   const handleInstanceAction = async (instanceId: string, action: 'connect' | 'disconnect' | 'delete') => {
@@ -284,8 +369,14 @@ export const ChannelDashboard: React.FC<ChannelDashboardProps> = ({
     try {
       setRefreshing(true);
 
+      // Use different endpoints based on user role
+      const isSimpleSystem = profile?.role === 'admin';
+      const baseUrl = isSimpleSystem
+        ? `/api/whatsapp/simple/instances/${instanceId}`
+        : `/api/channels/whatsapp/instances/${instanceId}`;
+
       if (action === 'delete') {
-        const response = await fetch(`/api/channels/whatsapp/instances/${instanceId}`, {
+        const response = await fetch(baseUrl, {
           method: 'DELETE',
           headers: { 'Content-Type': 'application/json' }
         });
@@ -311,8 +402,13 @@ export const ChannelDashboard: React.FC<ChannelDashboardProps> = ({
         console.log(`✅ Instancia "${instance?.instance_name}" eliminada exitosamente`);
 
       } else {
-        // Use status endpoint for connect/disconnect actions
-        const response = await fetch(`/api/channels/whatsapp/instances/${instanceId}/status`, {
+        // For simple system, connect/disconnect actions are not implemented yet
+        if (isSimpleSystem) {
+          throw new Error(`La acción "${action}" no está disponible para instancias simples. Use el código QR para conectar.`);
+        }
+
+        // Use status endpoint for connect/disconnect actions (complex system only)
+        const response = await fetch(`${baseUrl}/status`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -491,7 +587,10 @@ export const ChannelDashboard: React.FC<ChannelDashboardProps> = ({
     }
   };
 
-  const renderInstanceCard = (instance: ChannelInstance) => {
+  const ChannelInstanceCardFallback = ({ instance, onAction }: {
+    instance: ChannelInstance;
+    onAction?: (instanceId: string, action: 'connect' | 'disconnect' | 'delete' | 'configure') => void;
+  }) => {
     const statusColors = {
       connected: 'bg-green-100 text-green-800',
       disconnected: 'bg-gray-100 text-gray-800',
@@ -559,7 +658,7 @@ export const ChannelDashboard: React.FC<ChannelDashboardProps> = ({
         <div className="flex space-x-2">
           <button
             type="button"
-            onClick={() => window.location.href = `/admin/channels/${instance.channel_type}/${instance.id}/config`}
+            onClick={() => onAction?.(instance.id, 'configure')}
             className="flex-1 bg-white border border-gray-300 rounded-md px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
           >
             <Settings className="h-4 w-4 inline mr-1" />
@@ -568,7 +667,7 @@ export const ChannelDashboard: React.FC<ChannelDashboardProps> = ({
 
           <button
             type="button"
-            onClick={() => handleInstanceAction(instance.id, instance.status === 'connected' ? 'disconnect' : 'connect')}
+            onClick={() => onAction?.(instance.id, instance.status === 'connected' ? 'disconnect' : 'connect')}
             className={`
               flex-1 border rounded-md px-3 py-2 text-sm font-medium
               ${instance.status === 'connected'
@@ -582,7 +681,7 @@ export const ChannelDashboard: React.FC<ChannelDashboardProps> = ({
 
           <button
             type="button"
-            onClick={() => handleInstanceAction(instance.id, 'delete')}
+            onClick={() => onAction?.(instance.id, 'delete')}
             className="px-3 py-2 border border-red-300 rounded-md text-sm font-medium text-red-700 hover:bg-red-50"
           >
             Eliminar
@@ -647,6 +746,7 @@ export const ChannelDashboard: React.FC<ChannelDashboardProps> = ({
                   <ChannelInstanceCardFallback
                     key={instance.id}
                     instance={instance}
+                    onAction={handleInstanceCardAction}
                   />
                 );
               }
@@ -686,14 +786,6 @@ export const ChannelDashboard: React.FC<ChannelDashboardProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Page Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Canales de Comunicación</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          Gestiona todos tus canales de comunicación desde un solo lugar
-        </p>
-      </div>
-
       {/* Metrics Overview */}
       {renderMetricsOverview()}
 
@@ -724,6 +816,13 @@ export const ChannelDashboard: React.FC<ChannelDashboardProps> = ({
           }}
         />
       )}
+
+      {/* Simple WhatsApp Creation Modal */}
+      <SimpleWhatsAppModal
+        isOpen={simplifiedCreationModalOpen}
+        onClose={() => setSimplifiedCreationModalOpen(false)}
+        onSuccess={handleSimplifiedCreationSuccess}
+      />
     </div>
   );
 };

@@ -96,6 +96,14 @@ export abstract class BaseChannelService implements ChannelService {
         throw new Error(`Invalid configuration: ${validation.errors.join(', ')}`);
       }
 
+      // Check if this is a two-step flow (skipConnection)
+      const skipConnection = (config as any).metadata?.skipConnection ||
+                           (config as any).skipConnection ||
+                           false;
+
+      // Determine initial status based on flow type
+      const initialStatus = skipConnection ? 'disconnected' : 'connecting';
+
       // Create instance in database
       const { data: instance, error } = await this.supabase
         .from('channel_instances')
@@ -103,7 +111,7 @@ export abstract class BaseChannelService implements ChannelService {
           organization_id: organizationId,
           channel_type: this.getChannelType(),
           instance_name: config.instance_name || `${this.getChannelType()}-${Date.now()}`,
-          status: 'disconnected',
+          status: initialStatus,
           config: config,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
@@ -115,16 +123,29 @@ export abstract class BaseChannelService implements ChannelService {
         throw new Error(`Failed to create instance: ${error.message}`);
       }
 
-      // Attempt to connect
-      try {
-        await this.connect(instance);
-        await this.updateInstanceStatus(instance.id, 'connected');
-        instance.status = 'connected';
-      } catch (connectError) {
-        console.error(`Failed to connect instance ${instance.id}:`, connectError);
-        await this.updateInstanceStatus(instance.id, 'error', connectError.message);
-        instance.status = 'error';
-        instance.error_message = connectError.message;
+      // Log instance creation
+      await this.logActivity(instance.id, 'instance_created', {
+        channelType: this.getChannelType(),
+        organizationId,
+        instanceName: instance.instance_name,
+        skipConnection,
+        flowType: skipConnection ? 'two_step' : 'direct_connection'
+      });
+
+      // Only connect to external API if not skipping connection (two-step flow)
+      if (!skipConnection) {
+        try {
+          await this.connect(instance);
+          await this.updateInstanceStatus(instance.id, 'connected');
+          instance.status = 'connected';
+        } catch (connectError) {
+          console.error(`Failed to connect instance ${instance.id}:`, connectError);
+          await this.updateInstanceStatus(instance.id, 'error', connectError.message);
+          instance.status = 'error';
+          instance.error_message = connectError.message;
+        }
+      } else {
+        console.log(`✅ ${this.getChannelType()} instance created in disconnected state for two-step flow`);
       }
 
       return instance;
@@ -198,21 +219,42 @@ export abstract class BaseChannelService implements ChannelService {
    */
   async deleteInstance(instanceId: string): Promise<void> {
     try {
-      // Get instance to check if it's connected
+      // Get instance to check if it's connected and get full config
       const { data: instance } = await this.supabase
         .from('channel_instances')
-        .select('status')
+        .select('*')
         .eq('id', instanceId)
         .eq('organization_id', this.organizationId)
         .single();
 
+      if (!instance) {
+        throw new Error('Instance not found');
+      }
+
+      console.log(`🗑️ Deleting channel instance: ${instance.instance_name} (${instanceId})`);
+
       // Disconnect if connected
-      if (instance?.status === 'connected') {
+      if (instance.status === 'connected' || instance.status === 'connecting') {
         try {
+          console.log(`🔌 Disconnecting instance before deletion...`);
           await this.disconnect(instanceId);
         } catch (disconnectError) {
           console.error(`Failed to disconnect instance ${instanceId} before deletion:`, disconnectError);
         }
+      }
+
+      // CRITICAL FIX: Clean up any monitoring loops by broadcasting deletion event
+      // This will be picked up by frontend components to stop monitoring
+      if (typeof window !== 'undefined' && window.dispatchEvent) {
+        window.dispatchEvent(new CustomEvent('instance-deleted', {
+          detail: { instanceId, instanceName: instance.instance_name }
+        }));
+      }
+
+      // Clean up any global instance mappings for development instances
+      if ((global as any).devInstanceMapping) {
+        delete (global as any).devInstanceMapping[instanceId];
+        console.log(`🧹 Cleaned up global instance mapping for ${instanceId}`);
       }
 
       // Delete from database
@@ -225,6 +267,8 @@ export abstract class BaseChannelService implements ChannelService {
       if (error) {
         throw new Error(`Failed to delete instance: ${error.message}`);
       }
+
+      console.log(`✅ Channel instance deleted successfully: ${instance.instance_name}`);
     } catch (error) {
       console.error('Error deleting channel instance:', error);
       throw error;

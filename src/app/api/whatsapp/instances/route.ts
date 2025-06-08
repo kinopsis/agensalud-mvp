@@ -299,13 +299,21 @@ export async function POST(request: NextRequest) {
     // Create instance in Evolution API first
     try {
       const evolutionAPI = createEvolutionAPIService();
+      // HYBRID WORKFLOW: Support both immediate QR and two-step workflow
+      // - If skipConnection is true: Create in disconnected state (two-step workflow)
+      // - If skipConnection is false/undefined: Use immediate QR generation (optimized workflow)
+      const useImmediateQR = !instanceData.skipConnection; // Default to immediate QR for better performance
+
+      console.log(`🎯 Workflow selection: ${useImmediateQR ? 'Immediate QR (optimized)' : 'Two-step (legacy)'}`);
+
       const evolutionResponse = await evolutionAPI.createInstance({
         instanceName: instanceData.instance_name,
-        qrcode: instanceData.evolution_api_config?.qrcode ?? true,
-        integration: instanceData.evolution_api_config?.integration ?? 'WHATSAPP-BUSINESS'
+        integration: instanceData.evolution_api_config?.integration ?? 'WHATSAPP-BAILEYS',
+        qrcode: useImmediateQR, // Respect skipConnection parameter
+        number: instanceData.phone_number || undefined
       });
 
-      // Store instance in database
+      // Store instance in database with correct status for two-step workflow
       const { data: newInstance, error: insertError } = await supabase
         .from('whatsapp_instances')
         .insert({
@@ -314,15 +322,26 @@ export async function POST(request: NextRequest) {
           phone_number: instanceData.phone_number,
           business_id: instanceData.business_id,
           webhook_url: instanceData.webhook_url,
-          status: 'connecting',
+          status: useImmediateQR ?
+            (evolutionResponse.instance?.status || 'connecting') :
+            'disconnected', // Two-step workflow starts disconnected
           evolution_api_config: {
             ...instanceData.evolution_api_config,
-            apikey: evolutionResponse.hash?.apikey
+            apikey: typeof evolutionResponse.hash === 'string' ? evolutionResponse.hash : evolutionResponse.hash?.apikey,
+            instance_id: evolutionResponse.instance?.instanceId,
+            integration: evolutionResponse.instance?.integration
           },
-          qr_code: evolutionResponse.qrcode?.base64,
+          qr_code: useImmediateQR ?
+            (evolutionResponse.qrcode?.base64 || null) :
+            null, // No QR code in two-step workflow initially
           session_data: {
             evolutionInstanceName: instanceData.instance_name,
-            createdAt: new Date().toISOString()
+            evolutionInstanceId: evolutionResponse.instance?.instanceId,
+            createdAt: new Date().toISOString(),
+            workflow: useImmediateQR ? 'immediate_qr' : 'two_step',
+            qrCodeGenerated: useImmediateQR ? !!evolutionResponse.qrcode?.base64 : false,
+            evolutionStatus: evolutionResponse.instance?.status,
+            skipConnection: instanceData.skipConnection || false
           }
         })
         .select()
@@ -362,11 +381,16 @@ export async function POST(request: NextRequest) {
         success: true,
         data: {
           instance: newInstance,
-          qrCode: evolutionResponse.qrcode?.base64,
+          qrCode: evolutionResponse.qrcode?.base64 || null, // Include QR code if available
           evolutionResponse: {
             instanceName: evolutionResponse.instance?.instanceName,
-            status: evolutionResponse.instance?.status
-          }
+            instanceId: evolutionResponse.instance?.instanceId,
+            status: evolutionResponse.instance?.status || 'connecting',
+            integration: evolutionResponse.instance?.integration,
+            hasQRCode: !!evolutionResponse.qrcode?.base64
+          },
+          workflow: 'immediate_qr', // Updated to reflect actual workflow
+          nextStep: evolutionResponse.qrcode?.base64 ? 'scan_qr' : 'wait_for_qr'
         },
         meta: {
           timestamp: new Date().toISOString(),
