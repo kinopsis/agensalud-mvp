@@ -1,0 +1,234 @@
+name: 🚀 Deploy to Production
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      skip_tests:
+        description: 'Skip tests (emergency deployment)'
+        required: false
+        default: 'false'
+        type: boolean
+
+env:
+  VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+  VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+  NODE_VERSION: '18'
+
+jobs:
+  # Pre-deployment validation
+  validate:
+    name: 🔍 Pre-deployment Validation
+    runs-on: ubuntu-latest
+    if: github.event.inputs.skip_tests != 'true'
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          
+      - name: 📥 Install dependencies
+        run: npm ci
+        
+      - name: 🔍 Lint code
+        run: npm run lint
+        
+      - name: 🔍 Type check
+        run: npm run type-check
+        
+      - name: 🧪 Run tests
+        run: npm test -- --passWithNoTests --coverage
+        
+      - name: 🏗️ Test build
+        run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
+
+  # Deploy to staging first
+  deploy-staging:
+    name: 🚀 Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [validate]
+    if: always() && (needs.validate.result == 'success' || github.event.inputs.skip_tests == 'true')
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          
+      - name: 📥 Install Vercel CLI
+        run: npm install --global vercel@latest
+        
+      - name: 🔗 Pull Vercel Environment Information
+        run: vercel pull --yes --environment=preview --token=${{ secrets.VERCEL_TOKEN }}
+        
+      - name: 🏗️ Build Project Artifacts
+        run: vercel build --token=${{ secrets.VERCEL_TOKEN }}
+        
+      - name: 🚀 Deploy to Staging
+        id: staging-deploy
+        run: |
+          STAGING_URL=$(vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }})
+          echo "staging_url=$STAGING_URL" >> $GITHUB_OUTPUT
+          echo "Staging deployed to: $STAGING_URL"
+          
+      - name: 🔍 Validate Staging Deployment
+        run: |
+          sleep 30  # Wait for deployment to propagate
+          curl -f "${{ steps.staging-deploy.outputs.staging_url }}" || exit 1
+          curl -f "${{ steps.staging-deploy.outputs.staging_url }}/api/health" || exit 1
+          
+      - name: 📝 Comment Staging URL
+        uses: actions/github-script@v7
+        if: github.event_name == 'pull_request'
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `🚀 Staging deployment ready: ${{ steps.staging-deploy.outputs.staging_url }}`
+            })
+
+  # Deploy to production
+  deploy-production:
+    name: 🌟 Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [deploy-staging]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: production
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          
+      - name: 📥 Install Vercel CLI
+        run: npm install --global vercel@latest
+        
+      - name: 🔗 Pull Vercel Environment Information
+        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+        
+      - name: 🏗️ Build Project Artifacts
+        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+        
+      - name: 🚀 Deploy to Production
+        id: production-deploy
+        run: |
+          PRODUCTION_URL=$(vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }})
+          echo "production_url=$PRODUCTION_URL" >> $GITHUB_OUTPUT
+          echo "Production deployed to: $PRODUCTION_URL"
+
+  # Post-deployment validation
+  validate-production:
+    name: ✅ Validate Production
+    runs-on: ubuntu-latest
+    needs: [deploy-production]
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          
+      - name: 📥 Install dependencies
+        run: npm ci
+        
+      - name: ⏳ Wait for deployment propagation
+        run: sleep 60
+        
+      - name: 🔍 Run production validation
+        run: node scripts/validate-production-deployment.js
+        
+      - name: 🔍 Test critical user flows
+        run: |
+          # Test homepage
+          curl -f https://agentsalud.com || exit 1
+          
+          # Test API health
+          curl -f https://agentsalud.com/api/health || exit 1
+          
+          # Test authentication endpoints
+          curl -f https://agentsalud.com/api/auth/session || true
+          
+          # Test webhook endpoints
+          curl -X POST https://agentsalud.com/api/webhooks/evolution || true
+          
+      - name: 📊 Performance audit
+        run: |
+          npx lighthouse https://agentsalud.com --output=json --output-path=lighthouse-report.json --chrome-flags="--headless" || true
+          
+      - name: 📤 Upload performance report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lighthouse-report
+          path: lighthouse-report.json
+
+  # Notify deployment status
+  notify:
+    name: 📢 Notify Deployment Status
+    runs-on: ubuntu-latest
+    needs: [validate-production]
+    if: always()
+    
+    steps:
+      - name: 📢 Notify Success
+        if: needs.validate-production.result == 'success'
+        run: |
+          echo "🎉 Production deployment successful!"
+          echo "URL: https://agentsalud.com"
+          echo "Commit: ${{ github.sha }}"
+          
+      - name: 📢 Notify Failure
+        if: needs.validate-production.result == 'failure'
+        run: |
+          echo "❌ Production deployment failed!"
+          echo "Check logs for details"
+          exit 1
+
+  # Rollback on failure
+  rollback:
+    name: 🔄 Emergency Rollback
+    runs-on: ubuntu-latest
+    needs: [validate-production]
+    if: failure() && github.ref == 'refs/heads/main'
+    environment: production
+    
+    steps:
+      - name: 📥 Install Vercel CLI
+        run: npm install --global vercel@latest
+        
+      - name: 🔄 Rollback to previous deployment
+        run: |
+          echo "Rolling back to previous deployment..."
+          vercel rollback --token=${{ secrets.VERCEL_TOKEN }} --yes
+          
+      - name: 📢 Notify rollback
+        run: |
+          echo "🔄 Emergency rollback completed"
+          echo "Previous deployment restored"
