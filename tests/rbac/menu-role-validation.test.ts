@@ -52,6 +52,12 @@ const getNavigationItems = (profile: any): NavigationItem[] => {
         roles: ['superadmin']
       },
       {
+        name: 'Canales de Comunicación',
+        href: '/admin/channels',
+        icon: Building2,
+        roles: ['admin', 'superadmin']
+      },
+      {
         name: 'Documentación API',
         href: '/api-docs',
         icon: Book,
@@ -112,6 +118,12 @@ const getNavigationItems = (profile: any): NavigationItem[] => {
         href: '/locations',
         icon: Building2,
         roles: ['admin']
+      },
+      {
+        name: 'Canales de Comunicación',
+        href: '/admin/channels',
+        icon: Building2,
+        roles: ['admin', 'superadmin']
       },
       {
         name: 'Configuración',
@@ -240,6 +252,101 @@ describe('RBAC Menu Role Validation', () => {
       const sistemaMenu = filteredNavigation.find(item => item.name === 'Sistema');
       expect(organizacionesMenu).toBeUndefined();
       expect(sistemaMenu).toBeUndefined();
+    });
+  });
+
+  describe('Channels Menu Access - Issue Fix Validation', () => {
+    it('should show Canales de Comunicación menu for Admin role', () => {
+      const adminProfile = { role: 'admin' };
+      const navigation = getNavigationItems(adminProfile);
+      const filteredNavigation = filterNavigation(navigation, 'admin');
+
+      // Admin should see Canales de Comunicación
+      const channelsMenu = filteredNavigation.find(item => item.name === 'Canales de Comunicación');
+      expect(channelsMenu).toBeDefined();
+      expect(channelsMenu?.href).toBe('/admin/channels');
+      expect(channelsMenu?.roles).toContain('admin');
+      expect(channelsMenu?.roles).toContain('superadmin');
+    });
+
+    it('should show Canales de Comunicación menu for SuperAdmin role', () => {
+      const superadminProfile = { role: 'superadmin' };
+      const navigation = getNavigationItems(superadminProfile);
+      const filteredNavigation = filterNavigation(navigation, 'superadmin');
+
+      // SuperAdmin should see Canales de Comunicación
+      const channelsMenu = filteredNavigation.find(item => item.name === 'Canales de Comunicación');
+      expect(channelsMenu).toBeDefined();
+      expect(channelsMenu?.href).toBe('/admin/channels');
+      expect(channelsMenu?.roles).toContain('admin');
+      expect(channelsMenu?.roles).toContain('superadmin');
+    });
+
+    it('should NOT show Canales de Comunicación menu for Patient role', () => {
+      const patientProfile = { role: 'patient' };
+      const navigation = getNavigationItems(patientProfile);
+      const filteredNavigation = filterNavigation(navigation, 'patient');
+
+      // Patient should NOT see Canales de Comunicación
+      const channelsMenu = filteredNavigation.find(item => item.name === 'Canales de Comunicación');
+      expect(channelsMenu).toBeUndefined();
+    });
+
+    it('should NOT show Canales de Comunicación menu for Doctor role', () => {
+      const doctorProfile = { role: 'doctor' };
+      const navigation = getNavigationItems(doctorProfile);
+      const filteredNavigation = filterNavigation(navigation, 'doctor');
+
+      // Doctor should NOT see Canales de Comunicación
+      const channelsMenu = filteredNavigation.find(item => item.name === 'Canales de Comunicación');
+      expect(channelsMenu).toBeUndefined();
+    });
+
+    it('should NOT show Canales de Comunicación menu for Staff role', () => {
+      const staffProfile = { role: 'staff' };
+      const navigation = getNavigationItems(staffProfile);
+      const filteredNavigation = filterNavigation(navigation, 'staff');
+
+      // Staff should NOT see Canales de Comunicación
+      const channelsMenu = filteredNavigation.find(item => item.name === 'Canales de Comunicación');
+      expect(channelsMenu).toBeUndefined();
+    });
+  });
+
+  describe('SuperAdmin Navigation Structure', () => {
+    it('should have correct SuperAdmin navigation structure', () => {
+      const superadminProfile = { role: 'superadmin' };
+      const navigation = getNavigationItems(superadminProfile);
+      const filteredNavigation = filterNavigation(navigation, 'superadmin');
+
+      // SuperAdmin should have these specific items
+      const expectedItems = [
+        'Organizaciones',
+        'Usuarios',
+        'Sistema',
+        'Canales de Comunicación',
+        'Documentación API'
+      ];
+
+      expectedItems.forEach(itemName => {
+        const menuItem = filteredNavigation.find(item => item.name === itemName);
+        expect(menuItem).toBeDefined();
+      });
+
+      // SuperAdmin should NOT have regular user items
+      const regularItems = [
+        'Citas',
+        'Horarios',
+        'Gestión de Horarios',
+        'Gestión de Pacientes',
+        'Servicios',
+        'Ubicaciones'
+      ];
+
+      regularItems.forEach(itemName => {
+        const menuItem = filteredNavigation.find(item => item.name === itemName);
+        expect(menuItem).toBeUndefined();
+      });
     });
   });
 });

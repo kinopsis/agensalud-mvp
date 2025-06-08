@@ -2,10 +2,14 @@ import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import type { Database } from '@/types/database';
 
+/**
+ * Enhanced Supabase client with connection resilience
+ * Addresses timeout issues and provides graceful degradation
+ */
 export async function createClient() {
   const cookieStore = await cookies();
 
-  return createServerClient<Database>(
+  const client = createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
@@ -32,6 +36,56 @@ export async function createClient() {
           }
         },
       },
+      global: {
+        fetch: (url, options = {}) => {
+          // Enhanced fetch with shorter timeout for WhatsApp operations
+          const timeoutMs = url.toString().includes('whatsapp') ? 5000 : 15000;
+
+          return Promise.race([
+            fetch(url, {
+              ...options,
+              signal: AbortSignal.timeout(timeoutMs)
+            }),
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error(`Request timeout after ${timeoutMs}ms`)), timeoutMs)
+            )
+          ]);
+        }
+      }
     }
   );
+
+  return client;
+}
+
+/**
+ * Create client with retry mechanism for critical operations
+ */
+export async function createClientWithRetry(maxRetries = 3, baseDelay = 1000) {
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const client = await createClient();
+
+      // Test connection with a simple query
+      await client.from('organizations').select('id').limit(1);
+
+      console.log(`✅ Supabase connection established on attempt ${attempt}`);
+      return client;
+
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error('Unknown connection error');
+      console.warn(`⚠️ Supabase connection attempt ${attempt}/${maxRetries} failed:`, lastError.message);
+
+      if (attempt < maxRetries) {
+        const delay = baseDelay * Math.pow(2, attempt - 1);
+        console.log(`🔄 Retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  }
+
+  console.error('❌ All Supabase connection attempts failed');
+  throw new Error(`Failed to connect to Supabase after ${maxRetries} attempts: ${lastError?.message}`);
 }

@@ -15,14 +15,15 @@
  */
 
 import { createClient } from '@/lib/supabase/client';
-import { 
-  AppointmentStatus, 
-  UserRole, 
-  ROLE_PERMISSIONS, 
+import {
+  AppointmentStatus,
+  UserRole,
+  ROLE_PERMISSIONS,
   STATUS_CONFIGS,
   type StatusTransition,
   type AuditTrailEntry
 } from '@/types/appointment-states';
+import { WhatsAppNotificationService } from '@/lib/services/WhatsAppNotificationService';
 
 /**
  * State transition request interface
@@ -64,6 +65,11 @@ interface NotificationConfig {
  */
 export class AppointmentStateManager {
   private supabase = createClient();
+  private whatsappNotificationService: WhatsAppNotificationService;
+
+  constructor() {
+    this.whatsappNotificationService = new WhatsAppNotificationService(this.supabase);
+  }
 
   /**
    * Validate if a state transition is allowed
@@ -368,74 +374,91 @@ export class AppointmentStateManager {
     patientId: string,
     doctorId: string
   ): Promise<string[]> {
-    
-    const notifications: NotificationConfig[] = [];
 
-    // Define notification rules based on status changes
-    switch (newStatus) {
-      case AppointmentStatus.CONFIRMED:
-        notifications.push({
-          type: 'email',
-          recipients: [patientId],
-          template: 'appointment_confirmed',
-          priority: 'medium'
-        });
-        break;
+    const sentNotifications: string[] = [];
 
-      case AppointmentStatus.CANCELADA_CLINICA:
-        notifications.push({
-          type: 'email',
-          recipients: [patientId],
-          template: 'appointment_cancelled_by_clinic',
-          priority: 'high'
-        });
-        break;
+    // Define which statuses should trigger WhatsApp notifications
+    const whatsappNotificationStatuses = [
+      AppointmentStatus.CONFIRMED,
+      AppointmentStatus.CANCELADA_CLINICA,
+      AppointmentStatus.REAGENDADA,
+      AppointmentStatus.COMPLETED
+    ];
 
-      case AppointmentStatus.REAGENDADA:
-        notifications.push({
-          type: 'email',
-          recipients: [patientId],
-          template: 'appointment_rescheduled',
-          priority: 'medium'
+    // Send WhatsApp notification if status change warrants it
+    if (whatsappNotificationStatuses.includes(newStatus)) {
+      try {
+        console.log(`📱 Sending WhatsApp notification for appointment ${appointmentId}:`, {
+          previousStatus,
+          newStatus,
+          patientId
         });
-        break;
 
-      case AppointmentStatus.EN_CURSO:
-        notifications.push({
-          type: 'system',
-          recipients: ['admin'],
-          template: 'appointment_in_progress',
-          priority: 'low'
-        });
-        break;
+        // Get appointment context for notification
+        const { data: appointment } = await this.supabase
+          .from('appointments')
+          .select(`
+            *,
+            patients!inner(first_name, last_name, phone),
+            doctors!inner(profiles!inner(first_name, last_name)),
+            services!inner(name),
+            locations(name),
+            organizations!inner(name)
+          `)
+          .eq('id', appointmentId)
+          .single();
 
-      case AppointmentStatus.COMPLETED:
-        notifications.push({
-          type: 'email',
-          recipients: [patientId],
-          template: 'appointment_completed',
-          priority: 'low'
-        });
-        break;
+        if (appointment) {
+          const patient = appointment.patients;
+          const doctor = appointment.doctors.profiles;
+          const service = appointment.services;
+          const location = appointment.locations;
+          const organization = appointment.organizations;
+
+          const notificationContext = {
+            appointmentId,
+            patientName: `${patient.first_name} ${patient.last_name}`.trim(),
+            patientPhone: patient.phone,
+            doctorName: `Dr. ${doctor.first_name} ${doctor.last_name}`.trim(),
+            serviceName: service.name,
+            appointmentDate: new Date(appointment.appointment_date).toLocaleDateString('es-ES'),
+            appointmentTime: appointment.appointment_time,
+            locationName: location?.name,
+            organizationName: organization.name,
+            previousStatus,
+            newStatus
+          };
+
+          const whatsappResult = await this.whatsappNotificationService.sendAppointmentNotification(
+            notificationContext
+          );
+
+          if (whatsappResult.success) {
+            sentNotifications.push(`whatsapp:${newStatus}`);
+            console.log(`✅ WhatsApp notification sent successfully:`, whatsappResult.messageId);
+          } else {
+            console.error(`❌ WhatsApp notification failed:`, whatsappResult.error);
+            sentNotifications.push(`whatsapp:${newStatus}:failed`);
+          }
+        }
+
+      } catch (error) {
+        console.error('❌ Error sending WhatsApp notification:', error);
+        sentNotifications.push(`whatsapp:${newStatus}:error`);
+      }
     }
 
-    // Execute notifications (placeholder - would integrate with actual notification service)
-    const sentNotifications: string[] = [];
-    
-    for (const notification of notifications) {
-      try {
-        // Placeholder for actual notification sending
-        console.log(`📧 Sending ${notification.type} notification:`, {
-          appointmentId,
-          template: notification.template,
-          recipients: notification.recipients,
-          priority: notification.priority
-        });
-        
-        sentNotifications.push(`${notification.type}:${notification.template}`);
-      } catch (error) {
-        console.error('Error sending notification:', error);
-      }
+    // Legacy email notifications (placeholder for future implementation)
+    const emailNotificationStatuses = [
+      AppointmentStatus.CONFIRMED,
+      AppointmentStatus.CANCELADA_CLINICA,
+      AppointmentStatus.REAGENDADA,
+      AppointmentStatus.COMPLETED
+    ];
+
+    if (emailNotificationStatuses.includes(newStatus)) {
+      console.log(`📧 Email notification would be sent for status: ${newStatus}`);
+      sentNotifications.push(`email:${newStatus}:placeholder`);
     }
 
     return sentNotifications;

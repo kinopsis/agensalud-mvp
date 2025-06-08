@@ -27,7 +27,8 @@ import {
   Database,
   Activity,
   Bell,
-  RefreshCw
+  RefreshCw,
+  CheckCircle
 } from 'lucide-react';
 
 interface SystemStats {

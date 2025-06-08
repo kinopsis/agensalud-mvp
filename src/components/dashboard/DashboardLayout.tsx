@@ -100,6 +100,12 @@ export default function DashboardLayout({
         roles: ['superadmin']
       },
       {
+        name: 'Canales de Comunicación',
+        href: '/admin/channels',
+        icon: MessageSquare,
+        roles: ['admin', 'superadmin']
+      },
+      {
         name: 'Documentación API',
         href: '/api-docs',
         icon: Book,

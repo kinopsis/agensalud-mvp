@@ -21,13 +21,6 @@ let ChannelDashboard: any = null;
 // Simple fallback component
 const ChannelDashboardFallback = () => (
   <div className="space-y-6">
-    <div className="border-b border-gray-200 pb-4">
-      <h1 className="text-2xl font-bold text-gray-900">Canales de Comunicación</h1>
-      <p className="mt-1 text-sm text-gray-500">
-        Gestiona todos tus canales de comunicación desde un solo lugar
-      </p>
-    </div>
-
     <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
       {[1, 2, 3, 4].map((i) => (
         <div key={i} className="bg-white rounded-lg shadow border border-gray-200 p-6">
@@ -81,20 +74,30 @@ export default function ChannelsAdminPage() {
   const router = useRouter();
   const supabase = createClient();
 
-  // Load ChannelDashboard component dynamically
+  // Load ChannelDashboard component dynamically with cleanup
   useEffect(() => {
+    let isMounted = true;
+
     const loadDashboard = async () => {
       try {
         const module = await import('@/components/channels/ChannelDashboard');
-        ChannelDashboard = module.ChannelDashboard;
-        setDashboardLoaded(true);
+        if (isMounted) {
+          ChannelDashboard = module.ChannelDashboard;
+          setDashboardLoaded(true);
+        }
       } catch (error) {
         console.error('Failed to load ChannelDashboard:', error);
-        // Keep ChannelDashboard as null, will use fallback
+        if (isMounted) {
+          setDashboardLoaded(true); // Still set to true to show fallback
+        }
       }
     };
 
     loadDashboard();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   // =====================================================
