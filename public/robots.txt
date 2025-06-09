@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+
+# AgentSalud MVP - Healthcare Management Platform
+# Sitemap: https://your-domain.com/sitemap.xml

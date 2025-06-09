@@ -1,0 +1,3 @@
+# Placeholder favicon file for deployment
+# This file ensures the public directory exists for Docker build
+# Replace with actual favicon.ico in production

@@ -19,6 +19,9 @@ import { z } from 'zod';
 import UnifiedSlotGenerator, { type TimeSlot } from '@/lib/calendar/UnifiedSlotGenerator';
 import ImmutableDateSystem from '@/lib/core/ImmutableDateSystem';
 
+// Force dynamic rendering for this API route to prevent build-time static generation
+export const dynamic = 'force-dynamic';
+
 // Validation schema for availability query
 const availabilityQuerySchema = z.object({
   organizationId: z.string().uuid('Invalid organization ID'),
