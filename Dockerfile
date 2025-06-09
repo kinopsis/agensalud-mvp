@@ -95,15 +95,17 @@ COPY --from=builder /app/.next/static ./.next/static
 # Copy package.json for runtime dependencies info
 COPY --from=builder /app/package.json ./package.json
 
-# Copy startup script
-COPY scripts/startup-coolify.sh ./startup.sh
-RUN chmod +x ./startup.sh
+# Copy startup scripts from host context (before switching to non-root user)
+COPY scripts/startup-coolify.sh /app/startup.sh
+COPY scripts/startup-simple.sh /app/startup-simple.sh
+COPY scripts/startup-validator.js /app/startup-validator.js
+RUN chmod +x /app/startup.sh /app/startup-simple.sh
 
 # Create uploads directory for file handling
 RUN mkdir -p /app/uploads && chown -R nextjs:nodejs /app/uploads
 
-# Set correct permissions
-RUN chown -R nextjs:nodejs /app && chown nextjs:nodejs ./startup.sh
+# Set correct permissions (including startup script)
+RUN chown -R nextjs:nodejs /app
 USER nextjs
 
 # Expose port
@@ -114,5 +116,6 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=5 \
   CMD curl -f http://localhost:3000/api/health/basic || curl -f http://localhost:3000/api/health || exit 1
 
-# Start the application with startup script
-CMD ["./startup.sh"]
+# Start the application with Node.js validator (most reliable)
+# Fallback options: startup-simple.sh or direct server.js
+CMD ["node", "/app/startup-validator.js"]

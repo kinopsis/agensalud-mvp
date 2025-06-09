@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 # =====================================================
 # AGENTSALUD MVP - COOLIFY STARTUP SCRIPT
