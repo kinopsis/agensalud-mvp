@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # =====================================================
-# AGENTSALUD MVP - COOLIFY DEPLOYMENT SCRIPT
+# AGENTSALUD MVP - COOLIFY + SUPABASE DEPLOYMENT SCRIPT
 # =====================================================
-# Automated deployment script for Coolify platform
-# 
+# Automated deployment script for Coolify + External Supabase
+#
 # @author AgentSalud DevOps Team
 # @date January 2025
 
@@ -22,6 +22,7 @@ PROJECT_NAME="agentsalud-mvp"
 COOLIFY_SERVER="your-coolify-server.com"
 PRODUCTION_DOMAIN="agentsalud.com"
 EVOLUTION_DOMAIN="evolution.agentsalud.com"
+DEPLOYMENT_ARCHITECTURE="coolify-supabase-hybrid"
 
 # Functions
 log() {
@@ -43,18 +44,18 @@ error() {
 
 # Check prerequisites
 check_prerequisites() {
-    log "Checking prerequisites for Coolify deployment..."
-    
+    log "Checking prerequisites for Coolify + Supabase deployment..."
+
     # Check if Docker is available
     if ! command -v docker &> /dev/null; then
         error "Docker is not installed. Please install Docker first."
     fi
-    
+
     # Check if docker-compose is available
     if ! command -v docker-compose &> /dev/null; then
         error "Docker Compose is not installed. Please install Docker Compose first."
     fi
-    
+
     # Check if we're on the main branch
     CURRENT_BRANCH=$(git branch --show-current)
     if [ "$CURRENT_BRANCH" != "main" ]; then
@@ -65,7 +66,7 @@ check_prerequisites() {
             error "Deployment cancelled"
         fi
     fi
-    
+
     # Check if environment file exists
     if [ ! -f ".env" ]; then
         warning "Environment file .env not found"
@@ -76,8 +77,32 @@ check_prerequisites() {
             error "Please configure .env file before deployment"
         fi
     fi
-    
+
+    # Validate Supabase configuration
+    validate_supabase_config
+
     success "Prerequisites check passed"
+}
+
+# Validate Supabase configuration
+validate_supabase_config() {
+    log "Validating Supabase configuration..."
+
+    # Check if Supabase variables are set
+    if [ -z "$NEXT_PUBLIC_SUPABASE_URL" ] || [ -z "$NEXT_PUBLIC_SUPABASE_ANON_KEY" ]; then
+        warning "Supabase configuration missing in .env file"
+        echo "Required Supabase variables:"
+        echo "- NEXT_PUBLIC_SUPABASE_URL"
+        echo "- NEXT_PUBLIC_SUPABASE_ANON_KEY"
+        echo "- SUPABASE_SERVICE_ROLE_KEY"
+        read -p "Have you configured Supabase variables? (y/N): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            error "Please configure Supabase variables before deployment"
+        fi
+    fi
+
+    success "Supabase configuration validated"
 }
 
 # Validate Docker configuration
@@ -153,12 +178,8 @@ deploy_to_coolify() {
         error "Main application failed to start"
     fi
     
-    # Check if database is running
-    if docker-compose ps | grep -q "postgres.*Up"; then
-        success "Database is running"
-    else
-        error "Database failed to start"
-    fi
+    # Note: Database is external Supabase, so we don't check local postgres
+    log "Database: Using external Supabase (no local database to check)"
     
     # Check if Redis is running
     if docker-compose ps | grep -q "redis.*Up"; then
@@ -191,17 +212,28 @@ configure_ssl() {
     success "SSL configuration noted"
 }
 
-# Run database migrations
+# Run database migrations (Supabase)
 run_migrations() {
-    log "Running database migrations..."
-    
-    # Wait for database to be ready
-    sleep 10
-    
-    # Run migrations inside the app container
-    docker-compose exec -T agentsalud-app npm run db:migrate || warning "Migrations may have failed"
-    
-    success "Database migrations completed"
+    log "Running Supabase migrations..."
+
+    # Wait for application to be ready
+    sleep 15
+
+    # Note: Supabase migrations should be run via Supabase CLI or dashboard
+    # This is a placeholder for application-level migrations
+    warning "Supabase migrations should be managed via Supabase Dashboard or CLI"
+    echo "1. Go to your Supabase Dashboard"
+    echo "2. Navigate to SQL Editor"
+    echo "3. Run any pending migrations"
+    echo "4. Verify RLS policies are in place"
+
+    read -p "Have you run Supabase migrations? (y/N): " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        warning "Please run Supabase migrations before proceeding"
+    fi
+
+    success "Supabase migrations noted"
 }
 
 # Validate deployment
@@ -215,11 +247,11 @@ validate_deployment() {
         warning "Application health check failed"
     fi
     
-    # Check database connection
-    if docker-compose exec -T postgres pg_isready -U agentsalud > /dev/null; then
-        success "Database connection validated"
+    # Check Supabase connection via application
+    if curl -f -s "http://localhost:3000/api/health" | grep -q "database.*ok"; then
+        success "Supabase connection validated"
     else
-        warning "Database connection failed"
+        warning "Supabase connection may have issues"
     fi
     
     # Check Redis connection

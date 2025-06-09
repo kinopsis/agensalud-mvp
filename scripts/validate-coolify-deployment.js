@@ -2,10 +2,10 @@
 
 /**
  * =====================================================
- * AGENTSALUD MVP - COOLIFY DEPLOYMENT VALIDATION
+ * AGENTSALUD MVP - COOLIFY + SUPABASE DEPLOYMENT VALIDATION
  * =====================================================
- * Comprehensive validation script for Coolify deployment
- * 
+ * Comprehensive validation script for Coolify + External Supabase
+ *
  * @author AgentSalud DevOps Team
  * @date January 2025
  */
@@ -84,11 +84,12 @@ const validateDockerServices = async () => {
         
         const expectedServices = [
             'agentsalud-app',
-            'postgres',
             'redis',
             'nginx',
             'evolution-api'
         ];
+
+        // Note: postgres removed as we're using external Supabase
         
         let allRunning = true;
         
@@ -109,20 +110,31 @@ const validateDockerServices = async () => {
     }
 };
 
-const validateDatabase = async () => {
-    info('Validating database connection...');
-    
+const validateSupabase = async () => {
+    info('Validating Supabase connection...');
+
     try {
-        const { stdout } = await execAsync('docker-compose exec -T postgres pg_isready -U agentsalud');
-        if (stdout.includes('accepting connections')) {
-            success('Database is accepting connections');
-            return true;
+        // Check if Supabase environment variables are set
+        const { stdout } = await execAsync('docker-compose exec -T agentsalud-app env | grep SUPABASE');
+
+        if (stdout.includes('NEXT_PUBLIC_SUPABASE_URL') && stdout.includes('SUPABASE_SERVICE_ROLE_KEY')) {
+            success('Supabase environment variables are configured');
+
+            // Test Supabase connection via application health check
+            const response = await makeRequest(`${CONFIG.LOCAL_APP_URL}/api/health`);
+            if (response.statusCode === 200 && response.data.includes('database')) {
+                success('Supabase connection is working');
+                return true;
+            } else {
+                warning('Supabase connection may have issues');
+                return false;
+            }
         } else {
-            error('Database is not ready');
+            error('Supabase environment variables are missing');
             return false;
         }
     } catch (err) {
-        error(`Database validation failed: ${err.message}`);
+        error(`Supabase validation failed: ${err.message}`);
         return false;
     }
 };
@@ -216,7 +228,9 @@ const validateEnvironmentVariables = async () => {
     const requiredVars = [
         'NODE_ENV',
         'NEXTAUTH_SECRET',
-        'DATABASE_URL',
+        'NEXT_PUBLIC_SUPABASE_URL',
+        'NEXT_PUBLIC_SUPABASE_ANON_KEY',
+        'SUPABASE_SERVICE_ROLE_KEY',
         'OPENAI_API_KEY',
         'EVOLUTION_API_KEY'
     ];
@@ -332,7 +346,7 @@ const runValidation = async () => {
     
     const validations = [
         { name: 'Docker Services', fn: validateDockerServices },
-        { name: 'Database Connection', fn: validateDatabase },
+        { name: 'Supabase Connection', fn: validateSupabase },
         { name: 'Redis Connection', fn: validateRedis },
         { name: 'Application Health', fn: validateApplicationHealth },
         { name: 'Evolution API', fn: validateEvolutionAPI },
