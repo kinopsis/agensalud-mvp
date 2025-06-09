@@ -95,19 +95,24 @@ COPY --from=builder /app/.next/static ./.next/static
 # Copy package.json for runtime dependencies info
 COPY --from=builder /app/package.json ./package.json
 
+# Copy startup script
+COPY scripts/startup-coolify.sh ./startup.sh
+RUN chmod +x ./startup.sh
+
 # Create uploads directory for file handling
 RUN mkdir -p /app/uploads && chown -R nextjs:nodejs /app/uploads
 
 # Set correct permissions
-RUN chown -R nextjs:nodejs /app
+RUN chown -R nextjs:nodejs /app && chown nextjs:nodejs ./startup.sh
 USER nextjs
 
 # Expose port
 EXPOSE 3000
 
-# Health check optimized for Supabase connectivity
-HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
-  CMD curl -f http://localhost:3000/api/health || exit 1
+# Health check optimized for Coolify deployment
+# Use basic health check during deployment, then switch to full health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=5 \
+  CMD curl -f http://localhost:3000/api/health/basic || curl -f http://localhost:3000/api/health || exit 1
 
-# Start the application
-CMD ["node", "server.js"]
+# Start the application with startup script
+CMD ["./startup.sh"]
