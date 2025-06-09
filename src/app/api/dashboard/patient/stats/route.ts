@@ -1,17 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
+// Force dynamic rendering to prevent static generation errors
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+
 /**
  * GET /api/dashboard/patient/stats
  * Fetch statistics for patient dashboard
  * Includes appointment counts, history, and upcoming appointments
  */
 export async function GET(request: NextRequest) {
-
-// Force dynamic rendering to prevent static generation errors
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
-
   try {
     const { searchParams } = new URL(request.url);
     const patientId = searchParams.get('patientId');

@@ -51,56 +51,78 @@ function addDynamicConfig(filePath) {
     }
 
     let content = fs.readFileSync(filePath, 'utf8');
-    
+
     // Check if dynamic config already exists
     if (content.includes('export const dynamic')) {
       console.log(`✅ Already configured: ${filePath}`);
       return true;
     }
 
-    // Find the first import statement or the beginning of the file
     const lines = content.split('\n');
-    let insertIndex = 0;
-    
-    // Find where to insert the dynamic config
+    let insertIndex = -1;
+    let lastImportIndex = -1;
+
+    // Find the last import statement
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim();
-      
-      // Skip comments and empty lines at the top
-      if (line.startsWith('/**') || line.startsWith('*') || line.startsWith('*/') || line === '') {
-        continue;
+
+      if (line.startsWith('import ')) {
+        lastImportIndex = i;
       }
-      
-      // Insert after imports but before any other code
-      if (line.startsWith('import ') || line.startsWith('export ')) {
-        insertIndex = i + 1;
-        continue;
-      }
-      
-      // If we hit non-import code, insert here
-      break;
     }
 
-    // Insert the dynamic configuration
-    const dynamicConfig = `
-// Force dynamic rendering to prevent static generation errors
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
-`;
+    // If we found imports, insert after the last import
+    if (lastImportIndex !== -1) {
+      insertIndex = lastImportIndex + 1;
+    } else {
+      // If no imports, find the first non-comment, non-empty line
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
 
-    lines.splice(insertIndex, 0, dynamicConfig);
+        // Skip empty lines and comments at the top
+        if (line === '' ||
+            line.startsWith('//') ||
+            line.startsWith('/*') ||
+            line.startsWith('*') ||
+            line.startsWith('*/') ||
+            line.startsWith('/**')) {
+          continue;
+        }
+
+        // Insert before the first actual code
+        insertIndex = i;
+        break;
+      }
+    }
+
+    // Fallback: insert at the beginning if we couldn't find a good spot
+    if (insertIndex === -1) {
+      insertIndex = 0;
+    }
+
+    // Insert the dynamic configuration with proper spacing
+    const dynamicConfig = [
+      '',
+      '// Force dynamic rendering to prevent static generation errors',
+      "export const dynamic = 'force-dynamic';",
+      'export const revalidate = 0;',
+      ''
+    ];
+
+    // Insert the lines
+    lines.splice(insertIndex, 0, ...dynamicConfig);
     const newContent = lines.join('\n');
-    
+
     // Create backup
-    const backupPath = filePath + '.backup-dynamic';
+    const backupPath = filePath + '.backup-dynamic-v2';
     fs.writeFileSync(backupPath, content);
-    
+
     // Write the updated content
     fs.writeFileSync(filePath, newContent);
-    
-    console.log(`✅ Fixed: ${filePath}`);
+
+    console.log(`✅ Fixed: ${filePath} (inserted at line ${insertIndex + 1})`);
     return true;
-    
+
   } catch (error) {
     console.log(`❌ Error fixing ${filePath}: ${error.message}`);
     return false;

@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
+// Force dynamic rendering to prevent static generation errors
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+
 /**
  * DEBUG ENDPOINT: Test /api/patients API directly
  * Simulates the exact call that the frontend makes to identify the issue
  */
 export async function GET(request: NextRequest) {
-
-// Force dynamic rendering to prevent static generation errors
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
-
   try {
     const supabase = await createClient();
     

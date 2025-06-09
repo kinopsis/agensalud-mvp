@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createServiceClient } from '@/lib/supabase/service';
 
+// Force dynamic rendering to prevent static generation errors
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+
 /**
  * DEBUG ENDPOINT: Admin Doctor Access Diagnostics
  * Helps diagnose RLS and permission issues for Admin users accessing doctor data
@@ -10,11 +15,6 @@ import { createClient as createServiceClient } from '@/lib/supabase/service';
  * Requires: Admin or SuperAdmin role
  */
 export async function GET(request: NextRequest) {
-
-// Force dynamic rendering to prevent static generation errors
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
-
   try {
     const supabase = await createClient();
     const serviceSupabase = createServiceClient();
