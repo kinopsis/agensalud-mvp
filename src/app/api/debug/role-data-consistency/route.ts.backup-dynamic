@@ -8,11 +8,6 @@ import { createClient as createServiceClient } from '@/lib/supabase/service';
  * Checks foreign key relationships and multi-tenant data isolation
  */
 export async function GET(request: NextRequest) {
-
-// Force dynamic rendering to prevent static generation errors
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
-
   try {
     const { searchParams } = new URL(request.url);
     const targetRole = searchParams.get('role') || 'all';

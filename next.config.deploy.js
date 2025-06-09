@@ -8,10 +8,7 @@ const nextConfig = {
     ignoreDuringBuilds: true,
   },
 
-  // Supabase configuration
-  experimental: {
-    serverComponentsExternalPackages: ['@supabase/supabase-js', '@supabase/ssr']
-  },
+  // Supabase configuration - moved to consolidated experimental section below
 
   // Image configuration
   images: {
@@ -72,6 +69,21 @@ const nextConfig = {
     serverComponentsExternalPackages: ['@supabase/supabase-js', '@supabase/ssr'],
     optimizeCss: false,
     optimizeServerReact: false,
+  },
+
+  // Disable static optimization for API routes to prevent dynamic server usage errors
+  async headers() {
+    return [
+      {
+        source: '/api/:path*',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'no-cache, no-store, must-revalidate',
+          },
+        ],
+      },
+    ];
   },
 }
 

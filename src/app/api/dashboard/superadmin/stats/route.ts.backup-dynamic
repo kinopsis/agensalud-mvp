@@ -7,11 +7,6 @@ import { createClient } from '@/lib/supabase/server';
  * Includes organizations, users, appointments, and system health
  */
 export async function GET(request: NextRequest) {
-
-// Force dynamic rendering to prevent static generation errors
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
-
   try {
     const supabase = await createClient();
 

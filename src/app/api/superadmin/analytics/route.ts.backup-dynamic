@@ -7,11 +7,6 @@ import { createClient } from '@/lib/supabase/server';
  * Provides system-wide metrics, trends, and performance indicators
  */
 export async function GET(request: NextRequest) {
-
-// Force dynamic rendering to prevent static generation errors
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
-
   try {
     const { searchParams } = new URL(request.url);
     const timeRange = searchParams.get('timeRange') || '30d';

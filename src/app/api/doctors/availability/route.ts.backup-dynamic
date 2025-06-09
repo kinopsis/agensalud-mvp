@@ -10,11 +10,6 @@ import { createClient } from '@/lib/supabase/server';
 import { z } from 'zod';
 import { ImmutableDateSystem } from '@/lib/core/ImmutableDateSystem';
 
-// Force dynamic rendering to prevent static generation errors
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
-
-
 // Validation schema for availability query
 const availabilityQuerySchema = z.object({
   organizationId: z.string().uuid(),
