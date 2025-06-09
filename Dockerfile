@@ -48,6 +48,12 @@ RUN if [ -f "prisma/schema.prisma" ]; then npx prisma generate; fi
 # Use deployment-optimized Next.js config
 RUN cp next.config.deploy.js next.config.js
 
+# Set build-time environment variables for Next.js build
+ENV NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co
+ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYWNlaG9sZGVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE2NDUxOTI4MDAsImV4cCI6MTk2MDc2ODgwMH0.placeholder
+ENV NEXTAUTH_SECRET=build-time-secret-placeholder-32-characters-long
+ENV NEXTAUTH_URL=https://placeholder.com
+
 # Build the application with Supabase support using permissive TypeScript config
 RUN NEXT_TELEMETRY_DISABLED=1 npx next build
 

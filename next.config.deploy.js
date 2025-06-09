@@ -7,12 +7,12 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
-  
+
   // Supabase configuration
   experimental: {
-    serverComponentsExternalPackages: ['@supabase/supabase-js']
+    serverComponentsExternalPackages: ['@supabase/supabase-js', '@supabase/ssr']
   },
-  
+
   // Image configuration
   images: {
     domains: ['localhost', 'supabase.co'],
@@ -25,14 +25,19 @@ const nextConfig = {
       },
     ],
   },
-  
+
   // Environment variables
   env: {
     CUSTOM_KEY: process.env.CUSTOM_KEY,
   },
-  
+
   // Output configuration for deployment
   output: 'standalone',
+
+  // Skip static generation for API routes that require runtime environment variables
+  generateBuildId: async () => {
+    return 'coolify-deployment'
+  },
   
   // Webpack configuration
   webpack: (config, { dev, isServer }) => {

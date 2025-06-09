@@ -2,16 +2,32 @@ import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import type { Database } from '@/types/database';
 
+// Handle missing environment variables during build time
+const getSupabaseUrl = () => {
+  return process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
+};
+
+const getSupabaseAnonKey = () => {
+  return process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYWNlaG9sZGVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE2NDUxOTI4MDAsImV4cCI6MTk2MDc2ODgwMH0.placeholder';
+};
+
 /**
  * Enhanced Supabase client with connection resilience
  * Addresses timeout issues and provides graceful degradation
  */
 export async function createClient() {
   const cookieStore = await cookies();
+  const url = getSupabaseUrl();
+  const key = getSupabaseAnonKey();
+
+  // Only log warning during build time
+  if (url === 'https://placeholder.supabase.co' || key.includes('placeholder')) {
+    console.warn('⚠️ Using placeholder Supabase configuration for build time');
+  }
 
   const client = createServerClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    url,
+    key,
     {
       cookies: {
         get(name: string) {
