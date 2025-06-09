@@ -1,0 +1,186 @@
+# =====================================================
+# AGENTSALUD MVP - DOCKER COMPOSE FOR COOLIFY
+# =====================================================
+# Complete stack configuration for production deployment
+# 
+# @author AgentSalud DevOps Team
+# @date January 2025
+
+version: '3.8'
+
+services:
+  # =====================================================
+  # MAIN APPLICATION
+  # =====================================================
+  agentsalud-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: agentsalud-mvp
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_TELEMETRY_DISABLED=1
+      - DATABASE_URL=${DATABASE_URL}
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+      - NEXTAUTH_URL=${NEXTAUTH_URL}
+      - NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
+      - NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - EVOLUTION_API_BASE_URL=${EVOLUTION_API_BASE_URL}
+      - EVOLUTION_API_KEY=${EVOLUTION_API_KEY}
+      - REDIS_URL=${REDIS_URL}
+    depends_on:
+      - redis
+      - postgres
+    networks:
+      - agentsalud-network
+    volumes:
+      - app-uploads:/app/uploads
+    labels:
+      - "coolify.managed=true"
+      - "coolify.name=agentsalud-mvp"
+      - "coolify.domain=agentsalud.com"
+      - "coolify.port=3000"
+
+  # =====================================================
+  # POSTGRESQL DATABASE
+  # =====================================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: agentsalud-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-agentsalud}
+      - POSTGRES_USER=${POSTGRES_USER:-agentsalud}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./database/init:/docker-entrypoint-initdb.d
+    networks:
+      - agentsalud-network
+    ports:
+      - "5432:5432"
+    labels:
+      - "coolify.managed=true"
+
+  # =====================================================
+  # REDIS CACHE
+  # =====================================================
+  redis:
+    image: redis:7-alpine
+    container_name: agentsalud-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis-data:/data
+    networks:
+      - agentsalud-network
+    ports:
+      - "6379:6379"
+    labels:
+      - "coolify.managed=true"
+
+  # =====================================================
+  # NGINX REVERSE PROXY
+  # =====================================================
+  nginx:
+    image: nginx:alpine
+    container_name: agentsalud-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/ssl:/etc/nginx/ssl
+      - nginx-cache:/var/cache/nginx
+    depends_on:
+      - agentsalud-app
+    networks:
+      - agentsalud-network
+    labels:
+      - "coolify.managed=true"
+
+  # =====================================================
+  # EVOLUTION API (WHATSAPP)
+  # =====================================================
+  evolution-api:
+    image: atendai/evolution-api:v2.0.0
+    container_name: agentsalud-evolution
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - SERVER_TYPE=http
+      - SERVER_PORT=8080
+      - CORS_ORIGIN=*
+      - CORS_METHODS=GET,POST,PUT,DELETE
+      - CORS_CREDENTIALS=true
+      - LOG_LEVEL=ERROR
+      - LOG_COLOR=true
+      - DEL_INSTANCE=false
+      - DATABASE_ENABLED=true
+      - DATABASE_CONNECTION_URI=${EVOLUTION_DATABASE_URL}
+      - REDIS_ENABLED=true
+      - REDIS_URI=${REDIS_URL}
+      - WEBHOOK_GLOBAL_URL=${WEBHOOK_GLOBAL_URL}
+      - WEBHOOK_GLOBAL_ENABLED=true
+      - CONFIG_SESSION_PHONE_CLIENT=AgentSalud
+      - CONFIG_SESSION_PHONE_NAME=AgentSalud MVP
+    volumes:
+      - evolution-instances:/evolution/instances
+      - evolution-store:/evolution/store
+    networks:
+      - agentsalud-network
+    labels:
+      - "coolify.managed=true"
+      - "coolify.domain=evolution.agentsalud.com"
+      - "coolify.port=8080"
+
+# =====================================================
+# NETWORKS
+# =====================================================
+networks:
+  agentsalud-network:
+    driver: bridge
+    labels:
+      - "coolify.managed=true"
+
+# =====================================================
+# VOLUMES
+# =====================================================
+volumes:
+  postgres-data:
+    driver: local
+    labels:
+      - "coolify.managed=true"
+  
+  redis-data:
+    driver: local
+    labels:
+      - "coolify.managed=true"
+  
+  app-uploads:
+    driver: local
+    labels:
+      - "coolify.managed=true"
+  
+  nginx-cache:
+    driver: local
+    labels:
+      - "coolify.managed=true"
+  
+  evolution-instances:
+    driver: local
+    labels:
+      - "coolify.managed=true"
+  
+  evolution-store:
+    driver: local
+    labels:
+      - "coolify.managed=true"
