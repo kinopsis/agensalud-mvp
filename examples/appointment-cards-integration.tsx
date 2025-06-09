@@ -194,6 +194,7 @@ export function DynamicAppointmentCardExample({ userRole }: { userRole: UserRole
       {/* Dynamic component based on user role */}
       <AppointmentCardComponent
         appointment={exampleAppointment}
+        userRole={userRole}
         onReschedule={handleReschedule}
         onCancel={handleCancel}
         onStatusChange={handleStatusChange}
@@ -222,6 +223,7 @@ export function LegacyMigrationExample() {
       <div className="flex items-center space-x-4">
         <h2 className="text-xl font-semibold text-gray-900">Migration Example</h2>
         <button
+          type="button"
           onClick={() => setUseLegacy(!useLegacy)}
           className="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded"
         >
@@ -267,6 +269,7 @@ export function AppointmentListExample({ appointments, userRole }: {
         <CompactCardComponent
           key={appointment.id}
           appointment={appointment}
+          userRole={userRole}
           variant="compact"
           onReschedule={(id) => console.log('Reschedule:', id)}
           onCancel={(id) => console.log('Cancel:', id)}

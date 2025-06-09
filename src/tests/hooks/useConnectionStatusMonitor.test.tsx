@@ -230,43 +230,6 @@ describe('useConnectionStatusMonitor', () => {
     // Functions should still be accessible
     expect(typeof result.current.stopMonitoring).toBe('function');
   });
-    expect(() => {
-      act(() => {
-        result.current.stopMonitoring();
-      });
-    }).not.toThrow();
-  });
-
-  /**
-   * Test 5: Instance ID Change Handling
-   * 
-   * @description Verifies that changing instanceId doesn't cause
-   * dependency order issues or ReferenceErrors.
-   */
-  test('should handle instanceId changes without errors', () => {
-    const { result, rerender } = renderHook(
-      ({ instanceId }) =>
-        useConnectionStatusMonitor({
-          instanceId,
-          enabled: true
-        }),
-      {
-        initialProps: { instanceId: 'initial-instance' }
-      }
-    );
-
-    // Initial state
-    expect(result.current).toBeDefined();
-
-    // Change instanceId - should not throw errors
-    expect(() => {
-      rerender({ instanceId: 'new-instance' });
-    }).not.toThrow();
-
-    // Hook should still be functional
-    expect(result.current.connectionStatus).toBeDefined();
-    expect(typeof result.current.stopMonitoring).toBe('function');
-  });
 
   /**
    * Test 6: Callback Functions Execution

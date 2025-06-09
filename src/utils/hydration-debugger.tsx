@@ -1,9 +1,11 @@
 /**
  * Hydration Debugger Utility
- * 
+ *
  * Helps identify and debug hydration mismatches in Next.js applications
  * Provides detailed logging and detection of common hydration issues
  */
+
+import React from 'react';
 
 export interface HydrationIssue {
   type: 'date' | 'random' | 'conditional' | 'browser-only' | 'state' | 'unknown';

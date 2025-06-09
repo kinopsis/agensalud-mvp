@@ -55,10 +55,8 @@ export function useHydrationSafeNavigation() {
   const navigateTo = (url: string) => {
     if (!isClient) return;
 
-    // Try to use Next.js router first
-    if (typeof window !== 'undefined' && window.next?.router) {
-      window.next.router.push(url);
-    } else if (typeof window !== 'undefined') {
+    // Use window.location for navigation
+    if (typeof window !== 'undefined') {
       window.location.href = url;
     }
   };
@@ -182,8 +180,10 @@ export function withHydrationSafe<P extends object>(
   return function HydrationSafeComponent(props: P) {
     return React.createElement(
       HydrationSafe,
-      { fallback },
-      React.createElement(Component, props)
+      {
+        fallback,
+        children: React.createElement(Component, props)
+      }
     );
   };
 }

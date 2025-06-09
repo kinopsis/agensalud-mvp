@@ -127,6 +127,11 @@ jest.config.js
 cypress/
 cypress.json
 
+# Examples and documentation (not needed in production)
+examples/
+docs/
+*.md
+
 # Storybook
 .storybook/
 storybook-static/

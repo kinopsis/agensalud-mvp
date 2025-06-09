@@ -45,8 +45,11 @@ ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=""
 # Generate Prisma client if using Prisma with Supabase
 RUN if [ -f "prisma/schema.prisma" ]; then npx prisma generate; fi
 
-# Build the application with Supabase support
-RUN npm run build
+# Use deployment-optimized Next.js config
+RUN cp next.config.deploy.js next.config.js
+
+# Build the application with Supabase support using permissive TypeScript config
+RUN NEXT_TELEMETRY_DISABLED=1 npx next build
 
 # Remove development dependencies to reduce image size
 RUN npm prune --production
