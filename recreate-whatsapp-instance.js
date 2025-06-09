@@ -62,7 +62,7 @@ async function configureWebhook(instanceName, organizationId) {
   try {
     log(`Configuring webhook for: ${instanceName}`, 'FIX');
     
-    const webhookUrl = `http://localhost:3000/api/whatsapp/simple/webhook/${organizationId}`;
+    const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/whatsapp/simple/webhook/${organizationId}`;
     
     const response = await fetch(`${CONFIG.EVOLUTION_API_URL}/webhook/set/${instanceName}`, {
       method: 'POST',

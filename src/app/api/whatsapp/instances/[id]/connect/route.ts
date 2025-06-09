@@ -139,7 +139,7 @@ export async function POST(
     try {
       // Step 1: Configure webhook before connecting
       const evolutionAPI = createEvolutionAPIService();
-      const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/webhooks/evolution/${profile.organization_id}`;
+      const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://agendia.torrecentral.com'}/api/webhooks/evolution/${profile.organization_id}`;
       
       console.log(`🔗 Configuring webhook for instance: ${instance.instance_name}`);
       await evolutionAPI.configureWebhook(instance.instance_name, {

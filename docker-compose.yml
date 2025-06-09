@@ -123,7 +123,7 @@ services:
     environment:
       - SERVER_TYPE=http
       - SERVER_PORT=8080
-      - CORS_ORIGIN=https://agentsalud.com
+      - CORS_ORIGIN=https://agendia.torrecentral.com
       - CORS_METHODS=GET,POST,PUT,DELETE
       - CORS_CREDENTIALS=true
       - LOG_LEVEL=ERROR

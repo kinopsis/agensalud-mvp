@@ -116,7 +116,7 @@ export const DEFAULT_QR_CONFIG = {
  * Generate webhook URL for organization
  */
 export function generateWebhookURL(organizationId: string): string {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://api.agentsalud.com';
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://agendia.torrecentral.com';
   return `${baseUrl}/api/channels/whatsapp/webhook/${organizationId}`;
 }
 

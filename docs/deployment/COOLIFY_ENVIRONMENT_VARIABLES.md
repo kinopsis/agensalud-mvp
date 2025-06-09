@@ -18,7 +18,7 @@ SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```bash
 # NextAuth Configuration
 NEXTAUTH_SECRET=your-32-character-secret-key-here
-NEXTAUTH_URL=https://your-domain.com
+NEXTAUTH_URL=https://agendia.torrecentral.com
 ```
 
 ### **🤖 AI Services Configuration**

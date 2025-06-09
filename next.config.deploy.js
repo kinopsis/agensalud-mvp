@@ -12,7 +12,7 @@ const nextConfig = {
 
   // Image configuration
   images: {
-    domains: ['localhost', 'supabase.co'],
+    domains: ['localhost', 'supabase.co', 'agendia.torrecentral.com'],
     remotePatterns: [
       {
         protocol: 'https',

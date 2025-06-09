@@ -32,7 +32,7 @@ async function configureWebhookForInstance() {
   console.log(`Instance: ${INSTANCE_DETAILS.displayName} (${INSTANCE_DETAILS.evolutionInstanceName})`);
   
   try {
-    const webhookUrl = `http://localhost:3000/api/whatsapp/simple/webhook/${INSTANCE_DETAILS.organizationId}`;
+    const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/whatsapp/simple/webhook/${INSTANCE_DETAILS.organizationId}`;
     
     console.log(`Webhook URL: ${webhookUrl}`);
     

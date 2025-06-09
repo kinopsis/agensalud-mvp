@@ -171,14 +171,14 @@ SUPABASE_JWT_SECRET=tu-jwt-secret
 
 # 🔐 AUTENTICACIÓN
 NEXTAUTH_SECRET=32-caracteres-minimo
-NEXTAUTH_URL=https://agentsalud.com
+NEXTAUTH_URL=https://agendia.torrecentral.com
 
 # 🤖 OPENAI
 OPENAI_API_KEY=sk-...
 
 # 📱 WHATSAPP
 EVOLUTION_API_KEY=tu-evolution-key
-WEBHOOK_GLOBAL_URL=https://agentsalud.com/api/webhooks/evolution
+WEBHOOK_GLOBAL_URL=https://agendia.torrecentral.com/api/webhooks/evolution
 
 # 💾 REDIS
 REDIS_URL=redis://:password@redis:6379

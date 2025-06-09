@@ -13,7 +13,7 @@ const https = require('https');
 const { performance } = require('perf_hooks');
 
 // Configuration
-const PRODUCTION_URL = 'https://agentsalud.com';
+const PRODUCTION_URL = 'https://agendia.torrecentral.com';
 const TIMEOUT = 10000; // 10 seconds
 const PERFORMANCE_THRESHOLD = 3000; // 3 seconds
 
