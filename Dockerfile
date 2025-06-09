@@ -55,12 +55,13 @@ ARG SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzd
 ARG NEXTAUTH_SECRET=build-time-secret-placeholder-32-characters-long
 ARG NEXTAUTH_URL=https://agendia.torrecentral.com
 
-# Set environment variables for build process
-ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
-ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
-
-# Build the application with Supabase support using permissive TypeScript config
-RUN NEXT_TELEMETRY_DISABLED=1 npx next build
+# Build the application with placeholder values (will be overridden at runtime)
+# Note: NEXT_PUBLIC_ variables are embedded during build, but our client code
+# will read from process.env at runtime in the standalone server
+RUN NEXT_TELEMETRY_DISABLED=1 \
+    NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL \
+    NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY \
+    npx next build
 
 # Remove development dependencies to reduce image size
 RUN npm prune --production

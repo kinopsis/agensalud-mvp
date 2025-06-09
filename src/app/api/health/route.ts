@@ -11,6 +11,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
+// Force dynamic rendering for health checks
+export const dynamic = 'force-dynamic';
+
 // Health check configuration
 const HEALTH_CHECK_CONFIG = {
   timeout: 5000, // 5 seconds timeout
