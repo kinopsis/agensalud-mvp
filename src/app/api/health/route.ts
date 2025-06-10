@@ -244,6 +244,16 @@ async function checkEnvironmentHealth(): Promise<ServiceHealth> {
 
     const responseTime = Date.now() - startTime;
 
+    // Enhanced debugging information
+    const debugInfo = {
+      supabase_url: process.env.NEXT_PUBLIC_SUPABASE_URL || 'NOT_SET',
+      supabase_url_is_placeholder: process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://placeholder.supabase.co',
+      service_key_set: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+      service_key_has_placeholder: process.env.SUPABASE_SERVICE_ROLE_KEY?.includes('placeholder') || false,
+      is_build_time_detected: isBuildTime(),
+      env_count: Object.keys(process.env).length
+    };
+
     // For Coolify deployment: treat missing vars as degraded, not unhealthy
     // This allows the health check to pass during initial deployment
     if (missingVars.length > 0) {
@@ -253,6 +263,7 @@ async function checkEnvironmentHealth(): Promise<ServiceHealth> {
         error: `Missing environment variables: ${missingVars.join(', ')}`,
         details: {
           missing_vars: missingVars,
+          debug: debugInfo,
           note: 'Environment variables may still be loading during deployment'
         }
       };
@@ -266,6 +277,7 @@ async function checkEnvironmentHealth(): Promise<ServiceHealth> {
         error: `Placeholder values detected: ${placeholderVars.join(', ')}`,
         details: {
           placeholder_vars: placeholderVars,
+          debug: debugInfo,
           note: 'Production environment variables not yet loaded'
         }
       };
@@ -278,7 +290,8 @@ async function checkEnvironmentHealth(): Promise<ServiceHealth> {
         environment: process.env.NODE_ENV,
         required_vars: 'configured',
         deployment_platform: 'coolify',
-        database_provider: 'supabase'
+        database_provider: 'supabase',
+        debug: debugInfo
       }
     };
   } catch (error) {
