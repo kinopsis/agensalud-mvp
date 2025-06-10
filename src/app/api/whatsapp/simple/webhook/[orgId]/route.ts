@@ -78,14 +78,17 @@ export async function POST(
     // Process different event types
     switch (eventType) {
       case 'CONNECTION_UPDATE':
+      case 'connection.update':  // Handle Evolution API format
         await handleConnectionUpdate(whatsappService, webhookData);
         break;
 
       case 'STATUS_INSTANCE':
+      case 'status.instance':    // Handle Evolution API format
         await handleStatusInstance(whatsappService, webhookData);
         break;
 
       case 'QRCODE_UPDATED':
+      case 'qrcode.updated':     // Handle Evolution API format
         await handleQRCodeUpdate(whatsappService, webhookData);
         break;
 
