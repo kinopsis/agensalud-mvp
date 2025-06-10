@@ -33,9 +33,24 @@ RUN npm ci
 COPY . .
 
 # Build with placeholder values (will be replaced at runtime)
+# Supabase Configuration
 ENV NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co
-ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder-anon-key
-ENV NEXTAUTH_SECRET=build-time-secret-placeholder-32-characters-long
+ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYWNlaG9sZGVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE2NDUxOTI4MDAsImV4cCI6MTk2MDc2ODgwMH0.placeholder-signature-for-build-time-only
+
+# OpenAI Configuration
+ENV OPENAI_API_KEY=sk-placeholder-openai-api-key-for-build-time-only
+
+# Evolution API Configuration
+ENV EVOLUTION_API_BASE_URL=https://placeholder-evolution-api.com
+ENV EVOLUTION_API_KEY=placeholder-evolution-api-key
+
+# NextAuth Configuration
+ENV NEXTAUTH_SECRET=placeholder-nextauth-secret-32-characters-long
+ENV NEXTAUTH_URL=http://localhost:3000
+
+# Additional Security Keys
+ENV JWT_SECRET=placeholder-jwt-secret
+ENV ENCRYPTION_KEY=placeholder-encryption-key
 
 # Build the application
 RUN npm run build
