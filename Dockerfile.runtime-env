@@ -1,0 +1,123 @@
+# =====================================================
+# AGENTSALUD MVP - RUNTIME ENVIRONMENT DOCKERFILE
+# =====================================================
+# Alternative Dockerfile that handles NEXT_PUBLIC_* variables at runtime
+# Use this when Coolify build arguments are not available
+#
+# @author AgentSalud DevOps Team
+# @date January 2025
+
+# STAGE 1: Dependencies
+# =====================================================
+FROM node:18-alpine AS deps
+
+WORKDIR /app
+
+# Copy package files
+COPY package.json package-lock.json* ./
+
+# Install dependencies
+RUN npm ci --only=production && npm cache clean --force
+
+# STAGE 2: Builder
+# =====================================================
+FROM node:18-alpine AS builder
+
+WORKDIR /app
+
+# Copy package files and install all dependencies
+COPY package.json package-lock.json* ./
+RUN npm ci
+
+# Copy source code
+COPY . .
+
+# Build with placeholder values (will be replaced at runtime)
+ENV NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co
+ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder-anon-key
+ENV NEXTAUTH_SECRET=build-time-secret-placeholder-32-characters-long
+
+# Build the application
+RUN npm run build
+
+# STAGE 3: Runner with Runtime Environment Replacement
+# =====================================================
+FROM node:18-alpine AS runner
+
+# Install curl and sed for health checks and runtime replacement
+RUN apk add --no-cache curl sed && apk upgrade
+
+WORKDIR /app
+
+# Create non-root user
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
+
+# Set production environment
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
+
+# Copy built application
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+COPY --from=builder /app/package.json ./package.json
+
+# Copy runtime replacement scripts
+COPY scripts/manual-env-fix.sh ./manual-env-fix.sh
+COPY scripts/replace-env-runtime.js ./replace-env-runtime.js
+RUN chmod +x ./manual-env-fix.sh
+
+# Create uploads directory
+RUN mkdir -p /app/uploads && chown -R nextjs:nodejs /app/uploads
+
+# Create startup script that handles runtime replacement
+RUN cat > ./startup-with-replacement.sh << 'EOF'
+#!/bin/sh
+echo "🚀 AgentSalud MVP - Runtime Environment Startup"
+echo "=============================================="
+echo "Timestamp: $(date)"
+echo ""
+
+# Validate environment variables
+if [ -z "$NEXT_PUBLIC_SUPABASE_URL" ]; then
+    echo "❌ NEXT_PUBLIC_SUPABASE_URL not set"
+    exit 1
+fi
+
+if [ "$NEXT_PUBLIC_SUPABASE_URL" = "https://placeholder.supabase.co" ]; then
+    echo "❌ NEXT_PUBLIC_SUPABASE_URL is still placeholder"
+    echo "   Check Coolify environment variables configuration"
+    exit 1
+fi
+
+echo "✅ Environment variables configured:"
+echo "   NEXT_PUBLIC_SUPABASE_URL: $NEXT_PUBLIC_SUPABASE_URL"
+echo ""
+
+# Perform runtime replacement
+echo "🔄 Performing runtime environment variable replacement..."
+./manual-env-fix.sh
+
+echo ""
+echo "🎯 Starting Next.js server..."
+exec node server.js
+EOF
+
+RUN chmod +x ./startup-with-replacement.sh
+
+# Set permissions
+RUN chown -R nextjs:nodejs /app
+USER nextjs
+
+# Expose port
+EXPOSE 3000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=5 \
+  CMD curl -f http://localhost:3000/api/health/basic || curl -f http://localhost:3000/api/health || exit 1
+
+# Start with runtime replacement
+CMD ["./startup-with-replacement.sh"]
