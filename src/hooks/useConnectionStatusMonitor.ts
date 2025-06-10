@@ -145,14 +145,14 @@ export function useConnectionStatusMonitor(options: ConnectionStatusMonitorOptio
       const response_data = await response.json();
       const now = new Date().toISOString();
 
-      // Handle different response formats
-      const data = isSimpleInstance ? response_data.data : response_data.data;
+      // ENHANCED: Handle different response formats with null safety
+      const data = response_data?.data || response_data;
 
-      // Parse status from API response
-      const apiStatus = data?.status || response_data?.status || 'unknown';
-      const lastSeen = data?.lastSeen || data?.last_seen || data?.updated_at || null;
+      // ENHANCED: Parse status with comprehensive fallbacks and null checks
+      const apiStatus = data?.status || data?.connectionState || response_data?.status || 'unknown';
+      const lastSeen = data?.lastSeen || data?.last_seen || data?.updated_at || data?.lastUpdated || null;
       const uptime = data?.uptime || null;
-      const errorMessage = data?.error || data?.error_message || response_data.error?.message || null;
+      const errorMessage = data?.error || data?.error_message || data?.errorMessage || response_data?.error?.message || null;
 
       // Determine health status
       const isHealthy = apiStatus === 'connected' && !errorMessage;

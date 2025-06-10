@@ -27,11 +27,9 @@ class MonitoringRegistry {
   private readonly MAX_MONITORS_PER_INSTANCE = 1;
   private readonly MAX_ERRORS_BEFORE_STOP = 5;
   private readonly MIN_CHECK_INTERVAL = 10000; // 10 seconds minimum
-  private readonly MAX_REGISTRATION_ATTEMPTS = 3; // Max attempts per instance
-  private readonly REGISTRATION_COOLDOWN = 30000; // 30 seconds cooldown
-  private readonly PROBLEMATIC_INSTANCES = new Set([
-    '952314d2-d623-4485-b93e-f2b91b83d4c8' // Known problematic instance
-  ]);
+  private readonly MAX_REGISTRATION_ATTEMPTS = 5; // Increased from 3 to 5
+  private readonly REGISTRATION_COOLDOWN = 15000; // Reduced from 30 to 15 seconds
+  // REMOVED: No longer blocking specific instances
   
   /**
    * Register a new monitoring instance
@@ -45,14 +43,8 @@ class MonitoringRegistry {
     reason?: string;
     existingMonitor?: MonitoringInstance;
   } {
-    // CRITICAL FIX: Block problematic instances immediately
-    if (this.PROBLEMATIC_INSTANCES.has(instanceId)) {
-      console.log(`🚫 Monitoring registry: Instance ${instanceId} is blacklisted (infinite loop protection)`);
-      return {
-        success: false,
-        reason: 'Instance is blacklisted due to infinite loop protection'
-      };
-    }
+    // REMOVED: No longer blocking specific instances
+    // All instances are now treated equally with proper rate limiting
 
     const existingMonitor = this.monitors.get(instanceId);
     const now = Date.now();
@@ -237,6 +229,15 @@ class MonitoringRegistry {
     if (monitor) {
       monitor.intervalId = intervalId;
     }
+  }
+
+  /**
+   * Get instance data for a specific instance
+   * @param instanceId WhatsApp instance ID
+   * @returns Instance monitoring data or null if not found
+   */
+  getInstanceData(instanceId: string): MonitoringInstance | null {
+    return this.monitors.get(instanceId) || null;
   }
 }
 

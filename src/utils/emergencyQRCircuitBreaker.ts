@@ -34,14 +34,13 @@ class EmergencyQRCircuitBreaker {
     lastResetAttempt: 0
   };
 
-  // Circuit breaker thresholds
-  private readonly MAX_REQUESTS_PER_MINUTE = 10; // Very conservative
-  private readonly MAX_REQUESTS_PER_5_MINUTES = 20;
-  private readonly CIRCUIT_RESET_TIME = 300000; // 5 minutes
+  // Circuit breaker thresholds - RELAXED for better user experience
+  private readonly MAX_REQUESTS_PER_MINUTE = 20; // Increased from 10 to 20
+  private readonly MAX_REQUESTS_PER_5_MINUTES = 50; // Increased from 20 to 50
+  private readonly CIRCUIT_RESET_TIME = 120000; // Reduced from 5 minutes to 2 minutes
   private readonly HISTORY_CLEANUP_INTERVAL = 60000; // 1 minute
-  
-  // Problematic instance that should be blocked immediately
-  private readonly BLOCKED_INSTANCE = '693b032b-bdd2-4ae4-91eb-83a031aef568';
+
+  // REMOVED: Hardcoded blocked instance - no longer blocking specific instances
 
   constructor() {
     this.startHistoryCleanup();
@@ -61,14 +60,8 @@ class EmergencyQRCircuitBreaker {
     reason?: string;
     waitTime?: number;
   } {
-    // IMMEDIATE BLOCK: Problematic instance
-    if (instanceId === this.BLOCKED_INSTANCE) {
-      this.recordBlockedRequest(instanceId, source, 'Problematic instance blocked');
-      return {
-        allowed: false,
-        reason: 'Instance 693b032b-bdd2-4ae4-91eb-83a031aef568 is permanently blocked due to infinite loops'
-      };
-    }
+    // REMOVED: No longer blocking specific instances
+    // All instances are now treated equally
 
     // Circuit breaker is tripped
     if (this.state.isTripped) {
