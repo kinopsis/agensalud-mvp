@@ -48,20 +48,29 @@ RUN if [ -f "prisma/schema.prisma" ]; then npx prisma generate; fi
 # Use deployment-optimized Next.js config
 RUN cp next.config.deploy.js next.config.js
 
-# Set build-time environment variables for Next.js build (using ARG for security)
+# Set build-time environment variables for Next.js build
+# These ARG values will be overridden by Coolify build arguments in production
 ARG NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co
 ARG NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYWNlaG9sZGVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE2NDUxOTI4MDAsImV4cCI6MTk2MDc2ODgwMH0.placeholder-signature-for-build-time-only
 ARG SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYWNlaG9sZGVyIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTY0NTE5MjgwMCwiZXhwIjoxOTYwNzY4ODAwfQ.placeholder-signature-for-build-time-only
 ARG NEXTAUTH_SECRET=build-time-secret-placeholder-32-characters-long
 ARG NEXTAUTH_URL=https://agendia.torrecentral.com
 
-# Build the application with placeholder values (will be overridden at runtime)
-# Note: NEXT_PUBLIC_ variables are embedded during build, but our client code
-# will read from process.env at runtime in the standalone server
+# Validate build arguments (will show in build logs)
+RUN echo "🔍 Build Arguments Validation:" && \
+    echo "NEXT_PUBLIC_SUPABASE_URL: $NEXT_PUBLIC_SUPABASE_URL" && \
+    echo "NEXT_PUBLIC_SUPABASE_ANON_KEY length: ${#NEXT_PUBLIC_SUPABASE_ANON_KEY}" && \
+    echo "NEXTAUTH_URL: $NEXTAUTH_URL"
+
+# Build the application with production values from Coolify build arguments
+# CRITICAL: NEXT_PUBLIC_ variables are embedded into client bundle during build
 RUN NEXT_TELEMETRY_DISABLED=1 \
     NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL \
     NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY \
     npx next build
+
+# Verify build completed with correct values
+RUN echo "✅ Build completed with NEXT_PUBLIC_SUPABASE_URL: $NEXT_PUBLIC_SUPABASE_URL"
 
 # Remove development dependencies to reduce image size
 RUN npm prune --production

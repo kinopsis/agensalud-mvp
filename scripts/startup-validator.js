@@ -22,7 +22,7 @@ console.log('');
 // Validate environment variables
 function validateEnvironment() {
     console.log('🔍 Validating environment variables...');
-    
+
     const requiredVars = [
         'NODE_ENV',
         'NEXT_PUBLIC_SUPABASE_URL',
@@ -30,10 +30,10 @@ function validateEnvironment() {
         'SUPABASE_SERVICE_ROLE_KEY',
         'NEXTAUTH_SECRET'
     ];
-    
+
     const missingVars = [];
     const placeholderVars = [];
-    
+
     requiredVars.forEach(varName => {
         const value = process.env[varName];
         if (!value) {
@@ -42,30 +42,44 @@ function validateEnvironment() {
             placeholderVars.push(varName);
         }
     });
-    
+
     if (missingVars.length > 0) {
         console.log(`⚠️ Missing environment variables: ${missingVars.join(', ')}`);
         console.log('   Application will start but may have limited functionality');
     }
-    
+
     if (placeholderVars.length > 0) {
         console.log(`⚠️ Placeholder values detected: ${placeholderVars.join(', ')}`);
-        console.log('   Please update these in Coolify environment variables');
+        console.log('   This indicates build-time values were not overridden');
+        console.log('   Check Coolify build arguments configuration');
     }
-    
+
     if (missingVars.length === 0 && placeholderVars.length === 0) {
         console.log('✅ All environment variables properly configured');
     }
-    
-    // Log Supabase configuration
+
+    // Log Supabase configuration with detailed analysis
     if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
         if (process.env.NEXT_PUBLIC_SUPABASE_URL !== 'https://placeholder.supabase.co') {
             console.log(`✅ Supabase URL: ${process.env.NEXT_PUBLIC_SUPABASE_URL}`);
         } else {
-            console.log('⚠️ Using placeholder Supabase URL');
+            console.log('❌ Using placeholder Supabase URL - CRITICAL ISSUE');
+            console.log('   This means build arguments were not configured in Coolify');
+            console.log('   Application will not connect to production database');
         }
     }
-    
+
+    // Check if runtime replacement is needed
+    if (process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://placeholder.supabase.co') {
+        console.log('🔄 Attempting runtime environment variable replacement...');
+        try {
+            require('./replace-env-runtime.js');
+        } catch (error) {
+            console.log('⚠️ Runtime replacement failed:', error.message);
+            console.log('   Manual Coolify build arguments configuration required');
+        }
+    }
+
     console.log('');
 }
 
