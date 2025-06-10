@@ -1,23 +1,34 @@
-# 🔧 Coolify Build Arguments Setup - AgentSalud MVP
+# 🔧 Coolify Environment Variables Setup - AgentSalud MVP
 
-## **🚨 CRITICAL ISSUE RESOLUTION**
+## **🚨 CRITICAL DISCOVERY: BUILD ARGUMENTS NOT SUPPORTED**
 
-**Problem**: `NEXT_PUBLIC_SUPABASE_URL` shows placeholder value despite environment variables being loaded  
-**Root Cause**: Next.js embeds `NEXT_PUBLIC_*` variables at build time, not runtime  
-**Solution**: Configure Coolify to pass production values as Docker build arguments  
+**Problem**: `NEXT_PUBLIC_SUPABASE_URL` shows placeholder value despite environment variables being loaded
+**Root Cause**: Next.js embeds `NEXT_PUBLIC_*` variables at build time, not runtime
+**Documentation Finding**: **Coolify does NOT support Docker build arguments** in current version
+**Solution**: Use runtime environment variable replacement approach
 
-## **📋 STEP-BY-STEP COOLIFY CONFIGURATION**
+## **📋 COOLIFY CAPABILITIES CONFIRMED**
 
-### **Step 1: Access Coolify Build Settings**
+### **✅ What Coolify DOES Support:**
+- **Runtime Environment Variables**: Full support via UI
+- **Docker Compose Variables**: `${VARIABLE_NAME}` syntax
+- **Coolify Magic Variables**: `SERVICE_*`, `{{team.*}}`, `{{project.*}}`
+- **Custom Docker Options**: `--cap-add`, `--privileged` flags
+- **NPM Tokens**: Build-time secrets for private registries
+
+### **❌ What Coolify DOES NOT Support:**
+- **Docker Build Arguments**: No `--build-arg` support documented
+- **Build Settings for ARG**: No UI for build argument configuration
+- **ARG Override**: Cannot override Dockerfile ARG values
+
+## **📋 UPDATED COOLIFY CONFIGURATION**
+
+### **Step 1: Configure Runtime Environment Variables**
 
 1. **Login to Coolify Dashboard**
 2. **Navigate to AgentSalud Application**
-3. **Go to**: Application → Settings → Build
-4. **Find**: "Build Arguments" or "Docker Build Args" section
-
-### **Step 2: Configure Build Arguments**
-
-**Add these exact build arguments in Coolify:**
+3. **Go to**: Application → Environment Variables
+4. **Add these variables**:
 
 ```bash
 # Supabase Production Configuration
@@ -30,34 +41,38 @@ SUPABASE_SERVICE_ROLE_KEY=your-actual-service-role-key-here
 # NextAuth Configuration
 NEXTAUTH_SECRET=your-32-character-secret-key-here
 NEXTAUTH_URL=https://agendia.torrecentral.com
+
+# Node Environment
+NODE_ENV=production
 ```
 
-### **Step 3: Verify Build Argument Configuration**
+### **Step 2: Use Runtime Environment Dockerfile**
 
-**In Coolify Build Arguments section, ensure:**
-- ✅ Each argument is on a separate line
-- ✅ Format: `KEY=VALUE` (no spaces around =)
-- ✅ No quotes around values unless needed
-- ✅ All values are production values (no placeholders)
+**Since build arguments are not supported, use runtime replacement:**
 
-### **Step 4: Trigger Rebuild**
+1. **Change Dockerfile setting** in Coolify to: `Dockerfile.runtime-env`
+2. **This Dockerfile** performs runtime replacement of placeholder values
+3. **Automatic replacement** during container startup
 
-1. **Save build arguments** in Coolify
-2. **Trigger a new deployment** (not just restart)
-3. **Monitor build logs** for validation messages
-4. **Look for**: "Build Arguments Validation" in logs
+### **Step 3: Trigger Deployment**
+
+1. **Save environment variables** in Coolify
+2. **Change Dockerfile** to `Dockerfile.runtime-env`
+3. **Trigger new deployment** (not just restart)
+4. **Monitor startup logs** for replacement messages
 
 ## **🔍 VALIDATION STEPS**
 
-### **Step 1: Check Build Logs**
+### **Step 1: Check Startup Logs**
 
-**Look for these messages in Coolify build logs:**
+**Look for these messages in Coolify startup logs:**
 ```
-🔍 Build Arguments Validation:
-NEXT_PUBLIC_SUPABASE_URL: https://fjvletqwwmxusgthwphr.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY length: 266
-NEXTAUTH_URL: https://agendia.torrecentral.com
-✅ Build completed with NEXT_PUBLIC_SUPABASE_URL: https://fjvletqwwmxusgthwphr.supabase.co
+� AgentSalud MVP - Runtime Environment Startup
+✅ Environment variables configured:
+   NEXT_PUBLIC_SUPABASE_URL: https://fjvletqwwmxusgthwphr.supabase.co
+🔄 Performing runtime environment variable replacement...
+✅ All placeholder URLs replaced successfully
+🎯 Starting Next.js server...
 ```
 
 ### **Step 2: Test Health Check**
