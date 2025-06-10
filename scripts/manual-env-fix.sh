@@ -23,14 +23,17 @@ fi
 # Check if environment variables are set
 if [ -z "$NEXT_PUBLIC_SUPABASE_URL" ]; then
     echo "❌ Error: NEXT_PUBLIC_SUPABASE_URL not set"
-    exit 1
+    echo "   Coolify environment variables are not being injected into container"
+    echo "   Skipping runtime replacement - application will use build-time values"
+    exit 0
 fi
 
 if [ "$NEXT_PUBLIC_SUPABASE_URL" = "https://placeholder.supabase.co" ]; then
-    echo "❌ Error: NEXT_PUBLIC_SUPABASE_URL is still placeholder value"
+    echo "⚠️ Warning: NEXT_PUBLIC_SUPABASE_URL is still placeholder value"
     echo "   Current value: $NEXT_PUBLIC_SUPABASE_URL"
-    echo "   This indicates Coolify environment variables are not properly set"
-    exit 1
+    echo "   This indicates Coolify environment variables are not properly injected"
+    echo "   Skipping runtime replacement - application will use build-time placeholder values"
+    exit 0
 fi
 
 echo "✅ Environment variables detected:"

@@ -69,7 +69,8 @@ COPY --from=builder /app/package.json ./package.json
 COPY scripts/manual-env-fix.sh ./manual-env-fix.sh
 COPY scripts/replace-env-runtime.js ./replace-env-runtime.js
 COPY scripts/startup-with-replacement.sh ./startup-with-replacement.sh
-RUN chmod +x ./manual-env-fix.sh ./startup-with-replacement.sh
+COPY scripts/inject-runtime-config.sh ./scripts/inject-runtime-config.sh
+RUN chmod +x ./manual-env-fix.sh ./startup-with-replacement.sh ./scripts/inject-runtime-config.sh
 
 # Create uploads directory
 RUN mkdir -p /app/uploads && chown -R nextjs:nodejs /app/uploads

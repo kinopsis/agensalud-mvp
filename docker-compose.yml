@@ -15,7 +15,7 @@ services:
   agentsalud-app:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.runtime-env
     container_name: agentsalud-mvp
     restart: unless-stopped
     ports:
