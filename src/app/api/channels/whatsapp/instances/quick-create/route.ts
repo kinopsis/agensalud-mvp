@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getChannelManager } from '@/lib/channels/ChannelManager';
 import { registerWhatsAppChannel } from '@/lib/channels/whatsapp';
+import type { ChannelInstanceConfig } from '@/types/channels';
 import { z } from 'zod';
 
 // =====================================================
@@ -129,11 +130,11 @@ export async function POST(request: NextRequest) {
     // =====================================================
 
     // Register WhatsApp channel if not already registered
-    registerWhatsAppChannel();
-    
+    registerWhatsAppChannel(supabase, organizationId);
+
     // Get channel manager
-    const channelManager = getChannelManager();
-    const whatsappService = channelManager.getService('whatsapp');
+    const channelManager = getChannelManager(supabase, organizationId);
+    const whatsappService = channelManager.getChannelService('whatsapp');
 
     if (!whatsappService) {
       return NextResponse.json({
@@ -144,40 +145,59 @@ export async function POST(request: NextRequest) {
 
     // Create instance configuration with minimal defaults
     const instanceConfig = {
-      instance_name: autoInstanceName,
-      organization_id: organizationId,
-      channel_type: 'whatsapp' as const,
-      status: 'disconnected' as const,
-      config: {
-        whatsapp: {
-          evolution_api: {
-            instance_name: autoInstanceName,
-            webhook_url: `${process.env.NEXT_PUBLIC_APP_URL}/api/webhooks/evolution/${organizationId}`,
-            webhook_by_events: true,
-            webhook_base64: false,
-            events: [
-              'APPLICATION_STARTUP',
-              'QRCODE_UPDATED',
-              'CONNECTION_UPDATE',
-              'STATUS_INSTANCE',
-              'MESSAGES_UPSERT',
-              'MESSAGES_UPDATE',
-              'SEND_MESSAGE'
-            ]
-          },
-          features: {
-            read_receipts: true,
-            typing_indicator: true,
-            presence_update: true
-          }
-        }
+      auto_reply: false,
+      business_hours: {
+        enabled: false,
+        timezone: 'UTC',
+        schedule: {}
       },
-      created_by: user.id,
-      updated_by: user.id
+      ai_config: {
+        enabled: true,
+        model: 'gpt-3.5-turbo',
+        temperature: 0.7,
+        max_tokens: 500,
+        timeout_seconds: 30
+      },
+      webhook: {
+        url: `${process.env.NEXT_PUBLIC_APP_URL}/api/webhooks/evolution/${organizationId}`,
+        secret: '',
+        events: [
+          'APPLICATION_STARTUP',
+          'QRCODE_UPDATED',
+          'CONNECTION_UPDATE',
+          'STATUS_INSTANCE',
+          'MESSAGES_UPSERT',
+          'MESSAGES_UPDATE',
+          'SEND_MESSAGE'
+        ]
+      },
+      limits: {
+        max_concurrent_chats: 100,
+        message_rate_limit: 60,
+        session_timeout_minutes: 30
+      },
+      whatsapp: {
+        phone_number: '',
+        evolution_api: {
+          base_url: process.env.EVOLUTION_API_BASE_URL || 'https://evo.torrecentral.com',
+          api_key: process.env.EVOLUTION_API_KEY || '',
+          instance_name: autoInstanceName
+        },
+        qr_code: {
+          enabled: true,
+          auto_refresh: true,
+          refresh_interval_minutes: 5
+        },
+        features: {
+          read_receipts: true,
+          typing_indicator: true,
+          presence_update: true
+        }
+      }
     };
 
     // Create the instance
-    const instance = await whatsappService.createInstance(instanceConfig);
+    const instance = await whatsappService.createInstance(organizationId, instanceConfig);
 
     console.log(`✅ Instance created successfully: ${instance.id}`);
 
