@@ -9,7 +9,7 @@
  */
 
 import { createEvolutionAPIService } from './EvolutionAPIService';
-import { createClient } from '@/lib/supabase/server';
+import { createClient } from '@/lib/supabase/client';
 
 // =====================================================
 // TYPES AND INTERFACES
@@ -178,7 +178,7 @@ export class WhatsAppStateSyncService {
    */
   async syncAllInstances(): Promise<{ [instanceId: string]: SyncResult }> {
     try {
-      const supabase = await createClient();
+      const supabase = createClient();
       
       // Get all active WhatsApp instances
       const { data: instances, error } = await supabase
@@ -230,7 +230,7 @@ export class WhatsAppStateSyncService {
    */
   private async getDBInstanceState(instanceId: string): Promise<InstanceState | null> {
     try {
-      const supabase = await createClient();
+      const supabase = createClient();
       
       const { data: instance, error } = await supabase
         .from('channel_instances')
@@ -341,7 +341,7 @@ export class WhatsAppStateSyncService {
     newState: Partial<InstanceState>
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      const supabase = await createClient();
+      const supabase = createClient();
 
       // Prepare update data
       const updateData: any = {
