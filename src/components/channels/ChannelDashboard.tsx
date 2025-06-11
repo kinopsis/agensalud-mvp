@@ -15,6 +15,7 @@ import { MessageSquare, Phone, Send, Plus, Settings, Activity, TrendingUp, Refre
 import DashboardLayout from '@/components/dashboard/DashboardLayout';
 import StatsCard, { StatsGrid, StatsCardSkeleton } from '@/components/dashboard/StatsCard';
 import SimpleWhatsAppModal from '@/components/whatsapp/SimpleWhatsAppModal';
+import { QuickCreateWhatsAppButton } from '@/components/channels/QuickCreateWhatsAppButton';
 import { useAuth } from '@/contexts/auth-context';
 import { useTenant } from '@/contexts/tenant-context';
 import type {
@@ -305,11 +306,15 @@ export const ChannelDashboard: React.FC<ChannelDashboardProps> = ({
   // =====================================================
 
   const handleCreateInstance = (channelType: ChannelType) => {
-    // For WhatsApp and tenant admin users, use simplified creation modal
-    if (channelType === 'whatsapp' && profile?.role === 'admin') {
-      setSimplifiedCreationModalOpen(true);
+    // For WhatsApp, use radical solution (QuickCreateWhatsAppButton handles the creation)
+    // This function is now mainly for other channel types
+    if (channelType === 'whatsapp') {
+      // The QuickCreateWhatsAppButton will handle the creation directly
+      // This function is called by the "Nueva Instancia" button, but for WhatsApp
+      // we'll show the QuickCreateWhatsAppButton instead
+      console.log('WhatsApp creation handled by QuickCreateWhatsAppButton');
     } else {
-      // Navigate to create instance page for other cases
+      // Navigate to create instance page for other channel types
       window.location.href = `/admin/channels/${channelType}/create`;
     }
   };
@@ -700,14 +705,32 @@ export const ChannelDashboard: React.FC<ChannelDashboardProps> = ({
           <h2 className="text-xl font-semibold text-gray-900">
             {activeTabData.label} - Instancias
           </h2>
-          <button
-            type="button"
-            onClick={() => handleCreateInstance(activeTab)}
-            className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Nueva Instancia
-          </button>
+          {/* Use QuickCreateWhatsAppButton for WhatsApp, regular button for others */}
+          {activeTab === 'whatsapp' ? (
+            <QuickCreateWhatsAppButton
+              variant="primary"
+              size="md"
+              buttonText="Nueva Instancia WhatsApp"
+              onSuccess={async (instanceId, connectUrl) => {
+                console.log('✅ Instance created via radical solution:', instanceId);
+                // Refresh the instances list
+                await fetchChannelData();
+              }}
+              onError={(error) => {
+                console.error('❌ Radical solution creation failed:', error);
+                setError(error);
+              }}
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={() => handleCreateInstance(activeTab)}
+              className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Nueva Instancia
+            </button>
+          )}
         </div>
 
         {activeTabData.instances.length === 0 ? (
@@ -718,14 +741,32 @@ export const ChannelDashboard: React.FC<ChannelDashboardProps> = ({
               Comienza creando tu primera instancia de {activeTabData.label}.
             </p>
             <div className="mt-6">
-              <button
-                type="button"
-                onClick={() => handleCreateInstance(activeTab)}
-                className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Crear Instancia
-              </button>
+              {/* Use QuickCreateWhatsAppButton for WhatsApp, regular button for others */}
+              {activeTab === 'whatsapp' ? (
+                <QuickCreateWhatsAppButton
+                  variant="primary"
+                  size="lg"
+                  buttonText="Crear Primera Instancia WhatsApp"
+                  onSuccess={async (instanceId, connectUrl) => {
+                    console.log('✅ First instance created via radical solution:', instanceId);
+                    // Refresh the instances list
+                    await fetchChannelData();
+                  }}
+                  onError={(error) => {
+                    console.error('❌ First instance creation failed:', error);
+                    setError(error);
+                  }}
+                />
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => handleCreateInstance(activeTab)}
+                  className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Crear Instancia
+                </button>
+              )}
             </div>
           </div>
         ) : (

@@ -18,7 +18,7 @@ import { z } from 'zod';
 // =====================================================
 
 const connectRequestSchema = z.object({
-  action: z.literal('connect'),
+  action: z.literal('connect').optional(),
   force: z.boolean().optional().default(false)
 });
 
@@ -43,7 +43,7 @@ export async function POST(
   try {
     const supabase = await createClient();
     const instanceId = params.id;
-    const body = await request.json();
+    const body = await request.json().catch(() => ({})); // Support empty body for radical solution
 
     console.log(`🔗 Processing connection request for instance: ${instanceId}`);
 

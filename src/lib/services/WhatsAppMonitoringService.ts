@@ -9,6 +9,7 @@
  */
 
 import { createEvolutionAPIService } from './EvolutionAPIService';
+import { getEvolutionAPIConnectionPool } from './EvolutionAPIConnectionPool';
 
 interface MonitoringState {
   isActive: boolean;
